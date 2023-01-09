@@ -114,11 +114,12 @@ void CShotgun::PrimaryAttack()
 	m_iClip--;
 
 	int flags;
-#if defined(CLIENT_WEAPONS)
-	flags = FEV_NOTHOST;
-#else
-	flags = 0;
-#endif
+
+    #if defined(CLIENT_WEAPONS)
+        flags = FEV_NOTHOST;
+    #else
+        flags = 0;
+    #endif
 
 
 	m_pPlayer->pev->effects = (int)(m_pPlayer->pev->effects) | EF_MUZZLEFLASH;
@@ -128,11 +129,11 @@ void CShotgun::PrimaryAttack()
 
 	Vector vecDir;
 
-#ifdef CLIENT_DLL
-	if (bIsMultiplayer())
-#else
-	if (g_pGameRules->IsMultiplayer())
-#endif
+    #ifdef CLIENT_DLL
+        if (bIsMultiplayer())
+    #else
+        if (g_pGameRules->IsMultiplayer())
+    #endif
 	{
 		vecDir = m_pPlayer->FireBulletsPlayer(4, vecSrc, vecAiming, VECTOR_CONE_DM_SHOTGUN, 2048, BULLET_PLAYER_BUCKSHOT, 0, 0, m_pPlayer->pev, m_pPlayer->random_seed);
 	}

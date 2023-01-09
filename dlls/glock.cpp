@@ -85,7 +85,7 @@ void CGlock::SecondaryAttack()
 
 void CGlock::PrimaryAttack()
 {
-	GlockFire(0.01, 0.3, true);
+	GlockFire(0.21, 0.73, true);
 }
 
 void CGlock::GlockFire(float flSpread, float flCycleTime, bool fUseAutoAim)

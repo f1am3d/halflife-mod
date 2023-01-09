@@ -8,21 +8,21 @@ pub struct Vector {
   z: f32,
 }
 impl Vector {
-  fn new(&self) -> Vector {
-    Vector {
+  fn new(&self) -> Self {
+    Self {
       x: 0.0,
       y: 0.0,
       z: 0.0,
     }
   }
 
-  pub fn compare(&self, vector: Vector) -> bool {
+  pub fn compare(&self, vector: Self) -> bool {
     return self.x == vector.x
       && self.y == vector.y
       && self.z == vector.z;
   }
 
-  pub fn subtract(&mut self, vector: Vector) -> &Vector {
+  pub fn subtract(&mut self, vector: Self) -> &Self {
     self.x -= vector.x;
     self.y -= vector.y;
     self.z -= vector.z;
@@ -30,29 +30,29 @@ impl Vector {
     return self;
   }
 
-  pub fn copy_to_array(self: &Vector, array: &mut [f32]) {
+  pub fn copy_to_array(self: &Self, array: &mut [f32]) {
     array[0] = self.x;
     array[1] = self.y;
     array[2] = self.z;
   }
 
-  pub fn length_squared(self: &Vector) -> f32 {
-    let Vector { x, y, z } = self;
+  pub fn length_squared(self: &Self) -> f32 {
+    let Self { x, y, z } = self;
 
     return x * x
       + y * y
       + z * z;
   }
 
-  pub fn length(self: &Vector) -> f32 {
-    return Vector::length_squared(self).sqrt();
+  pub fn length(self: &Self) -> f32 {
+    return Self::length_squared(self).sqrt();
   }
 
-  pub fn normalize(self: &Vector) -> Vector {
+  pub fn normalize(self: &Self) -> Self {
     let mut length: f32 = self.length();
 
     if length == 0.0 {
-      return Vector {
+      return Self {
         x: 0.0,
         y: 0.0,
         z: 1.0 // ???? why z = 1?
@@ -64,25 +64,39 @@ impl Vector {
     return self * length;
   }
 
-  pub fn make2d(self: &Vector) -> Vector2d {
-    let Vector2d { x, y } = self;
+  pub fn make2d(self: &Self) -> Self2d {
+    let Self2d { x, y } = self;
 
-    return Vector2d { x: *x, y: *y };
+    return Self2d { x: *x, y: *y };
+  }
+
+  pub fn dot_product(self: &Self, vector: &Self) -> f32 {
+    return self.x * vector.x
+      + self.y * vector.y
+      + self.z * vector.z;
+  }
+
+  pub fn cross_product(a: &Self, b: &Self) -> Self {
+    return Self {
+      x: a.y * b.z - a.z * b.y,
+      y: a.z * b.x - a.x * b.z,
+      z: a.x * b.y - a.y * b.x
+    };
   }
 }
 trait VectorWithConstructorArgsTrait {
-  fn new(vector: Vector) -> Vector;
+  fn new(vector: Self) -> Self;
 }
 impl VectorWithConstructorArgsTrait for Vector {
-  fn new(vector: Vector) -> Vector {
-    Vector { ..vector }
+  fn new(vector: Self) -> Self {
+    Self { ..vector }
   }
 }
-impl ops::Add<Vector> for Vector {
-  type Output = Vector;
+impl ops::Add<Self> for Vector {
+  type Output = Self;
 
-  fn add(&mut self, vector: Vector) -> Vector {
-    let result = Vector {
+  fn add(self: &Self, vector: Self) -> Self {
+    let result = Self {
       x: self.x + vector.x,
       y: self.y + vector.y,
       z: self.z + vector.z
@@ -91,17 +105,17 @@ impl ops::Add<Vector> for Vector {
     return result;
   }
 }
-impl ops::AddAssign<Vector> for Vector {
-  fn add_assign(&mut self, vector: Vector) {
+impl ops::AddAssign<Self> for Vector {
+  fn add_assign(&mut self, vector: Self) {
     self.x += vector.x;
     self.y += vector.y;
     self.z += vector.z;
   }
 }
-impl ops::Div<Vector> for Vector {
-  type Output = Vector;
+impl ops::Div<Self> for Vector {
+  type Output = Self;
 
-  fn div(&mut self, value: f32) -> &Vector {
+  fn div(&mut self, value: f32) -> &Self {
     self.x /= value;
     self.y /= value;
     self.z /= value;
@@ -109,10 +123,10 @@ impl ops::Div<Vector> for Vector {
     return self;
   }
 }
-impl ops::Mul<Vector> for Vector {
-  type Output = Vector;
+impl ops::Mul<Self> for Vector {
+  type Output = Self;
 
-  fn mul(&mut self, value: f32) -> &Vector {
+  fn mul(&mut self, value: f32) -> &Self {
     self.x *= value;
     self.y *= value;
     self.z *= value;
@@ -127,58 +141,63 @@ pub struct Vector2d {
   y: f32,
 }
 impl Vector2d {
-  pub fn new(x: f32, y: f32) -> Vector2d {
-    return Vector2d { x, y };
+  pub fn new(x: f32, y: f32) -> Self {
+    return Self { x, y };
   }
 
-  pub fn length(self: &Vector2d) -> f32 {
-    let Vector2d { x, y } = self;
+  pub fn length(self: &Self) -> f32 {
+    let Self { x, y } = self;
 
     return (x * x + y * y).sqrt();
   }
 
-  pub fn normalize(self: &Vector2d) -> Vector2d {
+  pub fn normalize(self: &Self) -> Self {
     let mut length: f32 = self.length();
 
     if length == 0.0 {
-      return Vector2d { x: 0.0, y: 0.0 }; // ???? why z = 1?
+      return Self { x: 0.0, y: 0.0 }; // ???? why z = 1?
     }
 
     length = 1.0 / length;
 
     return self * length;
   }
-}
-impl ops::Add<Vector2d> for Vector2d {
-  type Output = Vector2d;
 
-  fn add(&mut self, vector: Vector2d) -> Vector2d {
-    return Vector2d {
+  pub fn dot_product(self: &Self, vector: &Self) -> f32 {
+    return self.x * vector.x
+      + self.y * vector.y;
+  }
+}
+impl ops::Add<Self> for Vector2d {
+  type Output = Self;
+
+  fn add(&mut self, vector: Self) -> Self {
+    return Self {
       x: self.x + vector.x,
       y: self.y + vector.y
     };
   }
 }
-impl ops::AddAssign<Vector2d> for Vector2d {
-  fn add_assign(&mut self, vector: Vector2d) {
+impl ops::AddAssign<Self> for Vector2d {
+  fn add_assign(&mut self, vector: Self) {
     self.x += vector.x;
     self.y += vector.y;
   }
 }
-impl ops::Div<Vector2d> for Vector2d {
-  type Output = Vector2d;
+impl ops::Div<Self> for Vector2d {
+  type Output = Self;
 
-  fn div(&mut self, value: f32) -> &Vector2d {
+  fn div(&mut self, value: f32) -> &Self {
     self.x /= value;
     self.y /= value;
 
     return self;
   }
 }
-impl ops::Mul<Vector2d> for Vector2d {
-  type Output = Vector2d;
+impl ops::Mul<Self> for Vector2d {
+  type Output = Self;
 
-  fn mul(&mut self, value: f32) -> &Vector2d {
+  fn mul(&mut self, value: f32) -> &Self {
     self.x *= value;
     self.y *= value;
 

@@ -19,30 +19,31 @@
 #include "shake.h"
 #include "hltv.h"
 #include "Exports.h"
+#include "r_studioint.h"
+#include "com_model.h"
+#include "kbutton.h"
+
 
 int CL_IsThirdPerson();
-void CL_CameraOffset(float* ofs);
+void CL_CameraOffset( float* ofs );
 
-void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams);
+void DLLEXPORT V_CalcRefdef( struct ref_params_s* pparams );
 
-void PM_ParticleLine(float* start, float* end, int pcolor, float life, float vert);
-int PM_GetVisEntInfo(int ent);
-int PM_GetPhysEntInfo(int ent);
-void InterpolateAngles(float* start, float* end, float* output, float frac);
-void NormalizeAngles(float* angles);
-float Distance(const float* v1, const float* v2);
-float AngleBetweenVectors(const float* v1, const float* v2);
+void PM_ParticleLine( float* start, float* end, int pcolor, float life, float vert );
+int PM_GetVisEntInfo( int ent );
+int PM_GetPhysEntInfo( int ent );
+void InterpolateAngles( float* start, float* end, float* output, float frac );
+void NormalizeAngles( float* angles );
+float Distance( const float* v1, const float* v2 );
+float AngleBetweenVectors( const float* v1, const float* v2 );
 
 extern float vJumpOrigin[3];
 extern float vJumpAngles[3];
 
 
-void V_DropPunchAngle(float frametime, float* ev_punchangle);
-void VectorAngles(const float* forward, float* angles);
+void V_DropPunchAngle( float frametime, float* ev_punchangle );
+void VectorAngles( const float* forward, float* angles );
 
-#include "r_studioint.h"
-#include "com_model.h"
-#include "kbutton.h"
 
 extern engine_studio_api_t IEngineStudio;
 
@@ -57,7 +58,7 @@ when crossing a water boudnary.
 
 extern cvar_t* cl_forwardspeed;
 extern cvar_t* chase_active;
-extern cvar_t *scr_ofsx, *scr_ofsy, *scr_ofsz;
+extern cvar_t* scr_ofsx, * scr_ofsy, * scr_ofsz;
 extern cvar_t* cl_vsmoothing;
 extern cvar_t* cl_rollangle;
 extern cvar_t* cl_rollspeed;
@@ -91,14 +92,17 @@ cvar_t* cl_chasedist;
 
 // These cvars are not registered (so users can't cheat), so set the ->value field directly
 // Register these cvars in V_Init() if needed for easy tweaking
-cvar_t v_iyaw_cycle = {"v_iyaw_cycle", "2", 0, 2};
-cvar_t v_iroll_cycle = {"v_iroll_cycle", "0.5", 0, 0.5};
-cvar_t v_ipitch_cycle = {"v_ipitch_cycle", "1", 0, 1};
-cvar_t v_iyaw_level = {"v_iyaw_level", "0.3", 0, 0.3};
-cvar_t v_iroll_level = {"v_iroll_level", "0.1", 0, 0.1};
-cvar_t v_ipitch_level = {"v_ipitch_level", "0.3", 0, 0.3};
+cvar_t v_iyaw_cycle = { "v_iyaw_cycle", "2", 0, 2 };
+cvar_t v_iroll_cycle = { "v_iroll_cycle", "0.5", 0, 0.5 };
+cvar_t v_ipitch_cycle = { "v_ipitch_cycle", "1", 0, 1 };
+cvar_t v_iyaw_level = { "v_iyaw_level", "0.3", 0, 0.3 };
+cvar_t v_iroll_level = { "v_iroll_level", "0.1", 0, 0.1 };
+cvar_t v_ipitch_level = { "v_ipitch_level", "0.3", 0, 0.3 };
 
 float v_idlescale; // used by TFC for concussion grenade effect
+
+// MOD 
+int vStepTime = 500; // ms
 
 //=============================================================================
 /*
@@ -133,7 +137,7 @@ void V_InterpolateAngles( float *start, float *end, float *output, float frac )
 	int i;
 	float ang1, ang2;
 	float d;
-	
+
 	V_NormalizeAngles( start );
 	V_NormalizeAngles( end );
 
@@ -148,7 +152,7 @@ void V_InterpolateAngles( float *start, float *end, float *output, float frac )
 			d -= 360;
 		}
 		else if ( d < -180 )
-		{	
+		{
 			d += 360;
 		}
 
@@ -159,48 +163,45 @@ void V_InterpolateAngles( float *start, float *end, float *output, float frac )
 } */
 
 // Quakeworld bob code, this fixes jitters in the mutliplayer since the clock (pparams->time) isn't quite linear
-float V_CalcBob(struct ref_params_s* pparams)
-{
-	static double bobtime = 0;
-	static float bob = 0;
+float V_CalcBob( struct ref_params_s* pparams ) {
+	static float bob;
 	float cycle;
 	static float lasttime = 0;
-	Vector vel;
+	static float frametime = pparams->frametime;
+	Vector2D velocity = Vector2D(
+		pparams->simvel[0], 
+		pparams->simvel[1]
+	);
 
 
-	if (pparams->onground == -1 ||
-		pparams->time == lasttime)
-	{
-		// just use old value
+	if(
+		pparams->onground == -1 ||
+		pparams->time == lasttime
+		) {
 		return bob;
 	}
 
-	lasttime = pparams->time;
+	const Vector2D bobEffectModifier = Vector2D( 0.3, 0.7 );
+	float bobEffectStrength = sqrt( 
+		pow( abs( velocity.x * bobEffectModifier.x ), 2 ) 
+		+ pow( abs( velocity.y * bobEffectModifier.y ), 2 )
+	);
 
-	//TODO: bobtime will eventually become a value so large that it will no longer behave properly.
-	//Consider resetting the variable if a level change is detected (pparams->time < lasttime might do the trick).
-	bobtime += pparams->frametime;
-	cycle = bobtime - (int)(bobtime / cl_bobcycle->value) * cl_bobcycle->value;
-	cycle /= cl_bobcycle->value;
+	cycle =  
+		fmod( pparams->time, vStepTime ) 
+		/ vStepTime
+		* bobEffectStrength 
+		* cl_bobcycle->value;
+	
+	bob = 1 * sin( cycle );
+	bob = V_min( bob, 4 );
+	bob = V_max( bob, -7 );
 
-	if (cycle < cl_bobup->value)
-	{
-		cycle = M_PI * cycle / cl_bobup->value;
-	}
-	else
-	{
-		cycle = M_PI + M_PI * (cycle - cl_bobup->value) / (1.0 - cl_bobup->value);
-	}
+	char buffer[64];
+	snprintf( buffer, sizeof buffer, "%f\n", bob );
+	ConsolePrint( buffer );
 
-	// bob is proportional to simulated velocity in the xy plane
-	// (don't count Z, or jumping messes it up)
-	VectorCopy(pparams->simvel, vel);
-	vel[2] = 0;
 
-	bob = sqrt(vel[0] * vel[0] + vel[1] * vel[1]) * cl_bob->value;
-	bob = bob * 0.3 + bob * 0.7 * sin(cycle);
-	bob = V_min(bob, 4);
-	bob = V_max(bob, -7);
 	return bob;
 }
 
@@ -210,33 +211,29 @@ V_CalcRoll
 Used by view and sv_user
 ===============
 */
-float V_CalcRoll(Vector angles, Vector velocity, float rollangle, float rollspeed)
-{
+float V_CalcRoll( Vector angles, Vector velocity, float rollangle, float rollspeed ) {
 	float sign;
 	float side;
 	float value;
 	Vector forward, right, up;
 
-	AngleVectors(angles, forward, right, up);
+	AngleVectors( angles, forward, right, up );
 
-	side = DotProduct(velocity, right);
+	side = DotProduct( velocity, right );
 	sign = side < 0 ? -1 : 1;
-	side = fabs(side);
+	side = fabs( side );
 
 	value = rollangle;
-	if (side < rollspeed)
-	{
+	if( side < rollspeed ) {
 		side = side * value / rollspeed;
 	}
-	else
-	{
+	else {
 		side = value;
 	}
 	return side * sign;
 }
 
-typedef struct pitchdrift_s
-{
+typedef struct pitchdrift_s {
 	float pitchvel;
 	int nodrift;
 	float driftmove;
@@ -245,23 +242,19 @@ typedef struct pitchdrift_s
 
 static pitchdrift_t pd;
 
-void V_StartPitchDrift()
-{
-	if (pd.laststop == gEngfuncs.GetClientTime())
-	{
+void V_StartPitchDrift() {
+	if( pd.laststop == gEngfuncs.GetClientTime() ) {
 		return; // something else is keeping it from drifting
 	}
 
-	if (0 != pd.nodrift || 0 == pd.pitchvel)
-	{
+	if( 0 != pd.nodrift || 0 == pd.pitchvel ) {
 		pd.pitchvel = v_centerspeed->value;
 		pd.nodrift = 0;
 		pd.driftmove = 0;
 	}
 }
 
-void V_StopPitchDrift()
-{
+void V_StopPitchDrift() {
 	pd.laststop = gEngfuncs.GetClientTime();
 	pd.nodrift = 1;
 	pd.pitchvel = 0;
@@ -277,37 +270,34 @@ If the user is adjusting pitch manually, either with lookup/lookdown,
 mlook and mouse, or klook and keyboard, pitch drifting is constantly stopped.
 ===============
 */
-void V_DriftPitch(struct ref_params_s* pparams)
-{
+void V_DriftPitch( struct ref_params_s* pparams ) {
 	float delta, move;
 
-	if (0 != gEngfuncs.IsNoClipping() || 0 == pparams->onground || 0 != pparams->demoplayback || 0 != pparams->spectator)
-	{
+	if( 0 != gEngfuncs.IsNoClipping() || 0 == pparams->onground || 0 != pparams->demoplayback ||
+		0 != pparams->spectator ) {
 		pd.driftmove = 0;
 		pd.pitchvel = 0;
 		return;
 	}
 
 	// don't count small mouse motion
-	if (0 != pd.nodrift)
-	{
-		if (v_centermove->value > 0 && (in_mlook.state & 1) == 0)
-		{
+	if( 0 != pd.nodrift ) {
+		if( v_centermove->value > 0 && (in_mlook.state & 1) == 0 ) {
 			// this is for lazy players. if they stopped, looked around and then continued
 			// to move the view will be centered automatically if they move more than
 			// v_centermove units.
 
-			if (fabs(pparams->cmd->forwardmove) < cl_forwardspeed->value)
+			if( fabs( pparams->cmd->forwardmove ) < cl_forwardspeed->value ) {
 				pd.driftmove = 0;
-			else
+			}
+			else {
 				pd.driftmove += pparams->frametime;
+			}
 
-			if (pd.driftmove > v_centermove->value)
-			{
+			if( pd.driftmove > v_centermove->value ) {
 				V_StartPitchDrift();
 			}
-			else
-			{
+			else {
 				return; // player didn't move enough
 			}
 		}
@@ -317,8 +307,7 @@ void V_DriftPitch(struct ref_params_s* pparams)
 
 	delta = pparams->idealpitch - pparams->cl_viewangles[PITCH];
 
-	if (0 == delta)
-	{
+	if( 0 == delta ) {
 		pd.pitchvel = 0;
 		return;
 	}
@@ -327,19 +316,15 @@ void V_DriftPitch(struct ref_params_s* pparams)
 
 	pd.pitchvel *= (1.0f + (pparams->frametime * 0.25f)); // get faster by time
 
-	if (delta > 0)
-	{
-		if (move > delta)
-		{
+	if( delta > 0 ) {
+		if( move > delta ) {
 			pd.pitchvel = 0;
 			move = delta;
 		}
 		pparams->cl_viewangles[PITCH] += move;
 	}
-	else if (delta < 0)
-	{
-		if (move > -delta)
-		{
+	else if( delta < 0 ) {
+		if( move > -delta ) {
 			pd.pitchvel = 0;
 			move = -delta;
 		}
@@ -347,10 +332,10 @@ void V_DriftPitch(struct ref_params_s* pparams)
 	}
 }
 
-/* 
-============================================================================== 
-						VIEW RENDERING 
-============================================================================== 
+/*
+==============================================================================
+						VIEW RENDERING
+==============================================================================
 */
 
 /*
@@ -358,24 +343,25 @@ void V_DriftPitch(struct ref_params_s* pparams)
 V_CalcGunAngle
 ==================
 */
-void V_CalcGunAngle(struct ref_params_s* pparams)
-{
+void V_CalcGunAngle( struct ref_params_s* pparams ) {
 	cl_entity_t* viewent;
 
 	viewent = gEngfuncs.GetViewModel();
-	if (!viewent)
+	if( !viewent ) {
 		return;
+	}
 
 	viewent->angles[YAW] = pparams->viewangles[YAW] + pparams->crosshairangle[YAW];
 	viewent->angles[PITCH] = -pparams->viewangles[PITCH] + pparams->crosshairangle[PITCH] * 0.25;
-	viewent->angles[ROLL] -= v_idlescale * sin(pparams->time * v_iroll_cycle.value) * v_iroll_level.value;
+	viewent->angles[ROLL] -= v_idlescale * sin( pparams->time * v_iroll_cycle.value ) * v_iroll_level.value;
 
 	// don't apply all of the v_ipitch to prevent normally unseen parts of viewmodel from coming into view.
-	viewent->angles[PITCH] -= v_idlescale * sin(pparams->time * v_ipitch_cycle.value) * (v_ipitch_level.value * 0.5);
-	viewent->angles[YAW] -= v_idlescale * sin(pparams->time * v_iyaw_cycle.value) * v_iyaw_level.value;
+	viewent->angles[PITCH] -=
+		v_idlescale * sin( pparams->time * v_ipitch_cycle.value ) * (v_ipitch_level.value * 0.5);
+	viewent->angles[YAW] -= v_idlescale * sin( pparams->time * v_iyaw_cycle.value ) * v_iyaw_level.value;
 
-	VectorCopy(viewent->angles, viewent->curstate.angles);
-	VectorCopy(viewent->angles, viewent->latched.prevangles);
+	VectorCopy( viewent->angles, viewent->curstate.angles );
+	VectorCopy( viewent->angles, viewent->latched.prevangles );
 }
 
 /*
@@ -385,11 +371,10 @@ V_AddIdle
 Idle swaying
 ==============
 */
-void V_AddIdle(struct ref_params_s* pparams)
-{
-	pparams->viewangles[ROLL] += v_idlescale * sin(pparams->time * v_iroll_cycle.value) * v_iroll_level.value;
-	pparams->viewangles[PITCH] += v_idlescale * sin(pparams->time * v_ipitch_cycle.value) * v_ipitch_level.value;
-	pparams->viewangles[YAW] += v_idlescale * sin(pparams->time * v_iyaw_cycle.value) * v_iyaw_level.value;
+void V_AddIdle( struct ref_params_s* pparams ) {
+	pparams->viewangles[ROLL] += v_idlescale * sin( pparams->time * v_iroll_cycle.value ) * v_iroll_level.value;
+	pparams->viewangles[PITCH] += v_idlescale * sin( pparams->time * v_ipitch_cycle.value ) * v_ipitch_level.value;
+	pparams->viewangles[YAW] += v_idlescale * sin( pparams->time * v_iyaw_cycle.value ) * v_iyaw_level.value;
 }
 
 
@@ -400,21 +385,20 @@ V_CalcViewRoll
 Roll is induced by movement and damage
 ==============
 */
-void V_CalcViewRoll(struct ref_params_s* pparams)
-{
+void V_CalcViewRoll( struct ref_params_s* pparams ) {
 	float side;
 	cl_entity_t* viewentity;
 
-	viewentity = gEngfuncs.GetEntityByIndex(pparams->viewentity);
-	if (!viewentity)
+	viewentity = gEngfuncs.GetEntityByIndex( pparams->viewentity );
+	if( !viewentity ) {
 		return;
+	}
 
-	side = V_CalcRoll(viewentity->angles, pparams->simvel, cl_rollangle->value, cl_rollspeed->value);
+	side = V_CalcRoll( viewentity->angles, pparams->simvel, cl_rollangle->value, cl_rollspeed->value );
 
 	pparams->viewangles[ROLL] += side;
 
-	if (pparams->health <= 0 && (pparams->viewheight[2] != 0))
-	{
+	if( pparams->health <= 0 && (pparams->viewheight[2] != 0) ) {
 		// only roll the view if the player is dead and the viewheight[2] is nonzero
 		// this is so deadcam in multiplayer will work.
 		pparams->viewangles[ROLL] = 80; // dead view angle
@@ -429,9 +413,8 @@ V_CalcIntermissionRefdef
 
 ==================
 */
-void V_CalcIntermissionRefdef(struct ref_params_s* pparams)
-{
-	cl_entity_t *ent, *view;
+void V_CalcIntermissionRefdef( struct ref_params_s* pparams ) {
+	cl_entity_t* ent, * view;
 	float old;
 
 	// ent is the player model ( visible when out of body )
@@ -440,8 +423,8 @@ void V_CalcIntermissionRefdef(struct ref_params_s* pparams)
 	// view is the weapon model (only visible from inside body )
 	view = gEngfuncs.GetViewModel();
 
-	VectorCopy(pparams->simorg, pparams->vieworg);
-	VectorCopy(pparams->cl_viewangles, pparams->viewangles);
+	VectorCopy( pparams->simorg, pparams->vieworg );
+	VectorCopy( pparams->cl_viewangles, pparams->viewangles );
 
 	view->model = NULL;
 
@@ -449,13 +432,12 @@ void V_CalcIntermissionRefdef(struct ref_params_s* pparams)
 	old = v_idlescale;
 	v_idlescale = 1;
 
-	V_AddIdle(pparams);
+	V_AddIdle( pparams );
 
-	if (0 != gEngfuncs.IsSpectateOnly())
-	{
+	if( 0 != gEngfuncs.IsSpectateOnly() ) {
 		// in HLTV we must go to 'intermission' position by ourself
-		VectorCopy(gHUD.m_Spectator.m_cameraOrigin, pparams->vieworg);
-		VectorCopy(gHUD.m_Spectator.m_cameraAngles, pparams->viewangles);
+		VectorCopy( gHUD.m_Spectator.m_cameraOrigin, pparams->vieworg );
+		VectorCopy( gHUD.m_Spectator.m_cameraAngles, pparams->viewangles );
 	}
 
 	v_idlescale = old;
@@ -468,8 +450,7 @@ void V_CalcIntermissionRefdef(struct ref_params_s* pparams)
 #define ORIGIN_BACKUP 64
 #define ORIGIN_MASK (ORIGIN_BACKUP - 1)
 
-typedef struct
-{
+typedef struct {
 	float Origins[ORIGIN_BACKUP][3];
 	float OriginTime[ORIGIN_BACKUP];
 
@@ -486,9 +467,8 @@ V_CalcRefdef
 
 ==================
 */
-void V_CalcNormalRefdef(struct ref_params_s* pparams)
-{
-	cl_entity_t *ent, *view;
+void V_CalcNormalRefdef( struct ref_params_s* pparams ) {
+	cl_entity_t* ent, * view;
 	int i;
 	Vector angles;
 	float bob, waterOffset;
@@ -500,14 +480,12 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 	Vector camAngles, camForward, camRight, camUp;
 	cl_entity_t* pwater;
 
-	V_DriftPitch(pparams);
+	V_DriftPitch( pparams );
 
-	if (0 != gEngfuncs.IsSpectateOnly())
-	{
-		ent = gEngfuncs.GetEntityByIndex(g_iUser2);
+	if( 0 != gEngfuncs.IsSpectateOnly() ) {
+		ent = gEngfuncs.GetEntityByIndex( g_iUser2 );
 	}
-	else
-	{
+	else {
 		// ent is the player model ( visible when out of body )
 		ent = gEngfuncs.GetLocalPlayer();
 	}
@@ -517,17 +495,17 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	// transform the view offset by the model's matrix to get the offset from
 	// model origin for the view
-	bob = V_CalcBob(pparams);
+	bob = V_CalcBob( pparams );
 
 	// refresh position
-	VectorCopy(pparams->simorg, pparams->vieworg);
+	VectorCopy( pparams->simorg, pparams->vieworg );
 	pparams->vieworg[2] += (bob);
-	VectorAdd(pparams->vieworg, pparams->viewheight, pparams->vieworg);
+	VectorAdd( pparams->vieworg, pparams->viewheight, pparams->vieworg );
 
-	VectorCopy(pparams->cl_viewangles, pparams->viewangles);
+	VectorCopy( pparams->cl_viewangles, pparams->viewangles );
 
 	gEngfuncs.V_CalcShake();
-	gEngfuncs.V_ApplyShake(pparams->vieworg, pparams->viewangles, 1.0);
+	gEngfuncs.V_ApplyShake( pparams->vieworg, pparams->viewangles, 1.0 );
 
 	// never let view origin sit exactly on a node line, because a water plane can
 	// dissapear when viewed with the eye exactly on it.
@@ -542,54 +520,47 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 	// -- this prevents drawing errors in GL due to waves
 
 	waterOffset = 0;
-	if (pparams->waterlevel >= 2)
-	{
+	if( pparams->waterlevel >= 2 ) {
 		int i, contents, waterDist, waterEntity;
 		Vector point;
 		waterDist = cl_waterdist->value;
 
-		if (0 != pparams->hardware)
-		{
-			waterEntity = gEngfuncs.PM_WaterEntity(pparams->simorg);
-			if (waterEntity >= 0 && waterEntity < pparams->max_entities)
-			{
-				pwater = gEngfuncs.GetEntityByIndex(waterEntity);
-				if (pwater && (pwater->model != NULL))
-				{
+		if( 0 != pparams->hardware ) {
+			waterEntity = gEngfuncs.PM_WaterEntity( pparams->simorg );
+			if( waterEntity >= 0 && waterEntity < pparams->max_entities ) {
+				pwater = gEngfuncs.GetEntityByIndex( waterEntity );
+				if( pwater && (pwater->model != NULL) ) {
 					waterDist += (pwater->curstate.scale * 16); // Add in wave height
 				}
 			}
 		}
-		else
-		{
+		else {
 			waterEntity = 0; // Don't need this in software
 		}
 
-		VectorCopy(pparams->vieworg, point);
+		VectorCopy( pparams->vieworg, point );
 
 		// Eyes are above water, make sure we're above the waves
-		if (pparams->waterlevel == 2)
-		{
+		if( pparams->waterlevel == 2 ) {
 			point[2] -= waterDist;
-			for (i = 0; i < waterDist; i++)
-			{
-				contents = gEngfuncs.PM_PointContents(point, NULL);
-				if (contents > CONTENTS_WATER)
+			for( i = 0; i < waterDist; i++ ) {
+				contents = gEngfuncs.PM_PointContents( point, NULL );
+				if( contents > CONTENTS_WATER ) {
 					break;
+				}
 				point[2] += 1;
 			}
 			waterOffset = (point[2] + waterDist) - pparams->vieworg[2];
 		}
-		else
-		{
+		else {
 			// eyes are under water.  Make sure we're far enough under
 			point[2] += waterDist;
 
-			for (i = 0; i < waterDist; i++)
-			{
-				contents = gEngfuncs.PM_PointContents(point, NULL);
-				if (contents <= CONTENTS_WATER)
+			for( i = 0; i < waterDist; i++ ) {
+				contents = gEngfuncs.PM_PointContents( point, NULL );
+				if( contents <= CONTENTS_WATER ) {
 					break;
+				}
 				point[2] -= 1;
 			}
 			waterOffset = (point[2] - waterDist) - pparams->vieworg[2];
@@ -598,60 +569,56 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	pparams->vieworg[2] += waterOffset;
 
-	V_CalcViewRoll(pparams);
+	V_CalcViewRoll( pparams );
 
-	V_AddIdle(pparams);
+	V_AddIdle( pparams );
 
 	// offsets
-	VectorCopy(pparams->cl_viewangles, angles);
+	VectorCopy( pparams->cl_viewangles, angles );
 
-	AngleVectors(angles, pparams->forward, pparams->right, pparams->up);
+	AngleVectors( angles, pparams->forward, pparams->right, pparams->up );
 
 	// don't allow cheats in multiplayer
-	if (pparams->maxclients <= 1)
-	{
-		for (i = 0; i < 3; i++)
-		{
-			pparams->vieworg[i] += scr_ofsx->value * pparams->forward[i] + scr_ofsy->value * pparams->right[i] + scr_ofsz->value * pparams->up[i];
+	if( pparams->maxclients <= 1 ) {
+		for( i = 0; i < 3; i++ ) {
+			pparams->vieworg[i] += scr_ofsx->value * pparams->forward[i] + scr_ofsy->value * pparams->right[i] +
+				scr_ofsz->value * pparams->up[i];
 		}
 	}
 
 	// Treating cam_ofs[2] as the distance
-	if (0 != CL_IsThirdPerson())
-	{
+	if( 0 != CL_IsThirdPerson() ) {
 		Vector ofs;
 
 		ofs[0] = ofs[1] = ofs[2] = 0.0;
 
-		CL_CameraOffset((float*)&ofs);
+		CL_CameraOffset( (float*) &ofs );
 
-		VectorCopy(ofs, camAngles);
+		VectorCopy( ofs, camAngles );
 		camAngles[ROLL] = 0;
 
-		AngleVectors(camAngles, camForward, camRight, camUp);
+		AngleVectors( camAngles, camForward, camRight, camUp );
 
-		for (i = 0; i < 3; i++)
-		{
+		for( i = 0; i < 3; i++ ) {
 			pparams->vieworg[i] += -ofs[2] * camForward[i];
 		}
 	}
 
 	// Give gun our viewangles
-	VectorCopy(pparams->cl_viewangles, view->angles);
+	VectorCopy( pparams->cl_viewangles, view->angles );
 
 	// set up gun position
-	V_CalcGunAngle(pparams);
+	V_CalcGunAngle( pparams );
 
 	// Use predicted origin as view origin.
-	VectorCopy(pparams->simorg, view->origin);
+	VectorCopy( pparams->simorg, view->origin );
 	view->origin[2] += (waterOffset);
-	VectorAdd(view->origin, pparams->viewheight, view->origin);
+	VectorAdd( view->origin, pparams->viewheight, view->origin );
 
 	// Let the viewmodel shake at about 10% of the amplitude
-	gEngfuncs.V_ApplyShake(view->origin, view->angles, 0.9);
+	gEngfuncs.V_ApplyShake( view->origin, view->angles, 0.9 );
 
-	for (i = 0; i < 3; i++)
-	{
+	for( i = 0; i < 3; i++ ) {
 		view->origin[i] += bob * 0.4 * pparams->forward[i];
 	}
 	view->origin[2] += bob;
@@ -661,9 +628,8 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 	view->angles[ROLL] -= bob * 1;
 	view->angles[PITCH] -= bob * 0.3;
 
-	if (0 != cl_bobtilt->value)
-	{
-		VectorCopy(view->angles, view->curstate.angles);
+	if( 0 != cl_bobtilt->value ) {
+		VectorCopy( view->angles, view->curstate.angles );
 	}
 
 	// pushing the view origin down off of the same X/Z plane as the ent's origin will give the
@@ -673,118 +639,112 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	// fudge position around to keep amount of weapon visible
 	// roughly equal with different FOV
-	if (pparams->viewsize == 110)
-	{
+	if( pparams->viewsize == 110 ) {
 		view->origin[2] += 1;
 	}
-	else if (pparams->viewsize == 100)
-	{
+	else if( pparams->viewsize == 100 ) {
 		view->origin[2] += 2;
 	}
-	else if (pparams->viewsize == 90)
-	{
+	else if( pparams->viewsize == 90 ) {
 		view->origin[2] += 1;
 	}
-	else if (pparams->viewsize == 80)
-	{
+	else if( pparams->viewsize == 80 ) {
 		view->origin[2] += 0.5;
 	}
 
 	// Add in the punchangle, if any
-	VectorAdd(pparams->viewangles, pparams->punchangle, pparams->viewangles);
+	VectorAdd( pparams->viewangles, pparams->punchangle, pparams->viewangles );
 
 	// Include client side punch, too
-	VectorAdd(pparams->viewangles, (float*)&ev_punchangle, pparams->viewangles);
+	VectorAdd( pparams->viewangles, (float*) &ev_punchangle, pparams->viewangles );
 
-	V_DropPunchAngle(pparams->frametime, (float*)&ev_punchangle);
+	V_DropPunchAngle( pparams->frametime, (float*) &ev_punchangle );
 
 	// smooth out stair step ups
-#if 1
-	if (0 == pparams->smoothing && 0 != pparams->onground && pparams->simorg[2] - oldz > 0)
-	{
+	#if 1
+	if( 0 == pparams->smoothing && 0 != pparams->onground && pparams->simorg[2] - oldz > 0 ) {
 		float steptime;
 
 		steptime = pparams->time - lasttime;
-		if (steptime < 0)
+		if( steptime < 0 ) {
 			//FIXME		I_Error ("steptime < 0");
 			steptime = 0;
+		}
 
 		oldz += steptime * 150;
-		if (oldz > pparams->simorg[2])
+		if( oldz > pparams->simorg[2] ) {
 			oldz = pparams->simorg[2];
-		if (pparams->simorg[2] - oldz > 18)
+		}
+		if( pparams->simorg[2] - oldz > 18 ) {
 			oldz = pparams->simorg[2] - 18;
+		}
 		pparams->vieworg[2] += oldz - pparams->simorg[2];
 		view->origin[2] += oldz - pparams->simorg[2];
 	}
-	else
-	{
+	else {
 		oldz = pparams->simorg[2];
 	}
-#endif
+	#endif
 
 	{
 		static float lastorg[3];
 		Vector delta;
 
-		VectorSubtract(pparams->simorg, lastorg, delta);
+		VectorSubtract( pparams->simorg, lastorg, delta );
 
-		if (Length(delta) != 0.0)
-		{
-			VectorCopy(pparams->simorg, ViewInterp.Origins[ViewInterp.CurrentOrigin & ORIGIN_MASK]);
+		if( Length( delta ) != 0.0 ) {
+			VectorCopy( pparams->simorg, ViewInterp.Origins[ViewInterp.CurrentOrigin & ORIGIN_MASK] );
 			ViewInterp.OriginTime[ViewInterp.CurrentOrigin & ORIGIN_MASK] = pparams->time;
 			ViewInterp.CurrentOrigin++;
 
-			VectorCopy(pparams->simorg, lastorg);
+			VectorCopy( pparams->simorg, lastorg );
 		}
 	}
 
 	// Smooth out whole view in multiplayer when on trains, lifts
-	if (cl_vsmoothing && 0 != cl_vsmoothing->value &&
-		(0 != pparams->smoothing && (pparams->maxclients > 1)))
-	{
+	if( cl_vsmoothing && 0 != cl_vsmoothing->value &&
+		(0 != pparams->smoothing && (pparams->maxclients > 1)) ) {
 		int foundidx;
 		int i;
 		float t;
 
-		if (cl_vsmoothing->value < 0.0)
-		{
-			gEngfuncs.Cvar_SetValue("cl_vsmoothing", 0.0);
+		if( cl_vsmoothing->value < 0.0 ) {
+			gEngfuncs.Cvar_SetValue( "cl_vsmoothing", 0.0 );
 		}
 
 		t = pparams->time - cl_vsmoothing->value;
 
-		for (i = 1; i < ORIGIN_MASK; i++)
-		{
+		for( i = 1; i < ORIGIN_MASK; i++ ) {
 			foundidx = ViewInterp.CurrentOrigin - 1 - i;
-			if (ViewInterp.OriginTime[foundidx & ORIGIN_MASK] <= t)
+			if( ViewInterp.OriginTime[foundidx & ORIGIN_MASK] <= t ) {
 				break;
+			}
 		}
 
-		if (i < ORIGIN_MASK && ViewInterp.OriginTime[foundidx & ORIGIN_MASK] != 0.0)
-		{
+		if( i < ORIGIN_MASK && ViewInterp.OriginTime[foundidx & ORIGIN_MASK] != 0.0 ) {
 			// Interpolate
 			Vector delta;
 			double frac;
 			double dt;
 			Vector neworg;
 
-			dt = ViewInterp.OriginTime[(foundidx + 1) & ORIGIN_MASK] - ViewInterp.OriginTime[foundidx & ORIGIN_MASK];
-			if (dt > 0.0)
-			{
+			dt =
+				ViewInterp.OriginTime[(foundidx + 1) & ORIGIN_MASK] - ViewInterp.OriginTime[foundidx & ORIGIN_MASK];
+			if( dt > 0.0 ) {
 				frac = (t - ViewInterp.OriginTime[foundidx & ORIGIN_MASK]) / dt;
-				frac = V_min(1.0, frac);
-				VectorSubtract(ViewInterp.Origins[(foundidx + 1) & ORIGIN_MASK], ViewInterp.Origins[foundidx & ORIGIN_MASK], delta);
-				VectorMA(ViewInterp.Origins[foundidx & ORIGIN_MASK], frac, delta, neworg);
+				frac = V_min( 1.0, frac );
+				VectorSubtract( ViewInterp.Origins[(foundidx + 1) & ORIGIN_MASK],
+								ViewInterp.Origins[foundidx & ORIGIN_MASK],
+								delta );
+				VectorMA( ViewInterp.Origins[foundidx & ORIGIN_MASK], frac, delta, neworg );
 
 				// Dont interpolate large changes
-				if (Length(delta) < 64)
-				{
-					VectorSubtract(neworg, pparams->simorg, delta);
+				if( Length( delta ) < 64 ) {
+					VectorSubtract( neworg, pparams->simorg, delta );
 
-					VectorAdd(pparams->simorg, delta, pparams->simorg);
-					VectorAdd(pparams->vieworg, delta, pparams->vieworg);
-					VectorAdd(view->origin, delta, view->origin);
+					VectorAdd( pparams->simorg, delta, pparams->simorg );
+					VectorAdd( pparams->vieworg, delta, pparams->vieworg );
+					VectorAdd( view->origin, delta, view->origin );
 				}
 			}
 		}
@@ -795,9 +755,8 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 	v_client_aimangles = pparams->cl_viewangles;
 	v_lastAngles = pparams->viewangles;
 	//	v_cl_angles = pparams->cl_viewangles;	// keep old user mouse angles !
-	if (0 != CL_IsThirdPerson())
-	{
-		VectorCopy(camAngles, pparams->viewangles);
+	if( 0 != CL_IsThirdPerson() ) {
+		VectorCopy( camAngles, pparams->viewangles );
 	}
 
 	//Apply this at all times
@@ -805,10 +764,12 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 		float pitch = pparams->viewangles[0];
 
 		// Normalize angles
-		if (pitch > 180)
+		if( pitch > 180 ) {
 			pitch -= 360.0;
-		else if (pitch < -180)
+		}
+		else if( pitch < -180 ) {
 			pitch += 360;
+		}
 
 		// Player pitch is inverted
 		pitch /= -3.0;
@@ -821,14 +782,12 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 	}
 
 	// override all previous settings if the viewent isn't the client
-	if (pparams->viewentity > pparams->maxclients)
-	{
+	if( pparams->viewentity > pparams->maxclients ) {
 		cl_entity_t* viewentity;
-		viewentity = gEngfuncs.GetEntityByIndex(pparams->viewentity);
-		if (viewentity)
-		{
-			VectorCopy(viewentity->origin, pparams->vieworg);
-			VectorCopy(viewentity->angles, pparams->viewangles);
+		viewentity = gEngfuncs.GetEntityByIndex( pparams->viewentity );
+		if( viewentity ) {
+			VectorCopy( viewentity->origin, pparams->vieworg );
+			VectorCopy( viewentity->angles, pparams->viewangles );
 
 			// Store off overridden viewangles
 			v_angles = pparams->viewangles;
@@ -840,65 +799,57 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 	v_origin = pparams->vieworg;
 }
 
-void V_SmoothInterpolateAngles(float* startAngle, float* endAngle, float* finalAngle, float degreesPerSec)
-{
+void V_SmoothInterpolateAngles( float* startAngle, float* endAngle, float* finalAngle, float degreesPerSec ) {
 	float absd, frac, d, threshhold;
 
-	NormalizeAngles(startAngle);
-	NormalizeAngles(endAngle);
+	NormalizeAngles( startAngle );
+	NormalizeAngles( endAngle );
 
-	for (int i = 0; i < 3; i++)
-	{
+	for( int i = 0; i < 3; i++ ) {
 		d = endAngle[i] - startAngle[i];
 
-		if (d > 180.0f)
-		{
+		if( d > 180.0f ) {
 			d -= 360.0f;
 		}
-		else if (d < -180.0f)
-		{
+		else if( d < -180.0f ) {
 			d += 360.0f;
 		}
 
-		absd = fabs(d);
+		absd = fabs( d );
 
-		if (absd > 0.01f)
-		{
+		if( absd > 0.01f ) {
 			frac = degreesPerSec * v_frametime;
 
 			threshhold = degreesPerSec / 4;
 
-			if (absd < threshhold)
-			{
+			if( absd < threshhold ) {
 				float h = absd / threshhold;
 				h *= h;
 				frac *= h; // slow down last degrees
 			}
 
-			if (frac > absd)
-			{
+			if( frac > absd ) {
 				finalAngle[i] = endAngle[i];
 			}
-			else
-			{
-				if (d > 0)
+			else {
+				if( d > 0 ) {
 					finalAngle[i] = startAngle[i] + frac;
-				else
+				}
+				else {
 					finalAngle[i] = startAngle[i] - frac;
+				}
 			}
 		}
-		else
-		{
+		else {
 			finalAngle[i] = endAngle[i];
 		}
 	}
 
-	NormalizeAngles(finalAngle);
+	NormalizeAngles( finalAngle );
 }
 
 // Get the origin of the Observer based around the target's position and angles
-void V_GetChaseOrigin(float* angles, float* origin, float distance, float* returnvec)
-{
+void V_GetChaseOrigin( float* angles, float* origin, float distance, float* returnvec ) {
 	Vector vecEnd;
 	Vector forward;
 	Vector vecStart;
@@ -910,41 +861,39 @@ void V_GetChaseOrigin(float* angles, float* origin, float distance, float* retur
 	cl_entity_t* ent = NULL;
 
 	// Trace back from the target using the player's view angles
-	AngleVectors(angles, forward, NULL, NULL);
+	AngleVectors( angles, forward, NULL, NULL );
 
-	VectorScale(forward, -1, forward);
+	VectorScale( forward, -1, forward );
 
-	VectorCopy(origin, vecStart);
+	VectorCopy( origin, vecStart );
 
-	VectorMA(vecStart, distance, forward, vecEnd);
+	VectorMA( vecStart, distance, forward, vecEnd );
 
-	while (maxLoops > 0)
-	{
-		trace = gEngfuncs.PM_TraceLine(vecStart, vecEnd, PM_TRACELINE_PHYSENTSONLY, 2, ignoreent);
+	while( maxLoops > 0 ) {
+		trace = gEngfuncs.PM_TraceLine( vecStart, vecEnd, PM_TRACELINE_PHYSENTSONLY, 2, ignoreent );
 
 		// WARNING! trace->ent is is the number in physent list not the normal entity number
 
-		if (trace->ent <= 0)
-			break; // we hit the world or nothing, stop trace
+		if( trace->ent <= 0 ) {
+			break;
+		} // we hit the world or nothing, stop trace
 
-		ent = gEngfuncs.GetEntityByIndex(PM_GetPhysEntInfo(trace->ent));
+		ent = gEngfuncs.GetEntityByIndex( PM_GetPhysEntInfo( trace->ent ) );
 
-		if (ent == NULL)
+		if( ent == NULL )
 			break;
 
 		// hit non-player solid BSP , stop here
-		if (ent->curstate.solid == SOLID_BSP && 0 == ent->player)
+		if( ent->curstate.solid == SOLID_BSP && 0 == ent->player )
 			break;
 
 		// if close enought to end pos, stop, otherwise continue trace
-		if (Distance(trace->endpos, vecEnd) < 1.0f)
-		{
+		if( Distance( trace->endpos, vecEnd ) < 1.0f ) {
 			break;
 		}
-		else
-		{
+		else {
 			ignoreent = trace->ent; // ignore last hit entity
-			VectorCopy(trace->endpos, vecStart);
+			VectorCopy( trace->endpos, vecStart );
 		}
 
 		maxLoops--;
@@ -952,17 +901,17 @@ void V_GetChaseOrigin(float* angles, float* origin, float distance, float* retur
 
 	/*	if ( ent )
 	{
-		gEngfuncs.Con_Printf("Trace loops %i , entity %i, model %s, solid %i\n",(8-maxLoops),ent->curstate.number, ent->model->name , ent->curstate.solid ); 
+		gEngfuncs.Con_Printf("Trace loops %i , entity %i, model %s, solid %i\n",(8-maxLoops),ent->curstate.number, ent->model->name , ent->curstate.solid );
 	} */
 
-	VectorMA(trace->endpos, 4, trace->plane.normal, returnvec);
+	VectorMA( trace->endpos, 4, trace->plane.normal, returnvec );
 
-	v_lastDistance = Distance(trace->endpos, origin); // real distance without offset
+	v_lastDistance = Distance( trace->endpos, origin ); // real distance without offset
 }
 
 /*void V_GetDeathCam(cl_entity_t * ent1, cl_entity_t * ent2, float * angle, float * origin)
 {
-	float newAngle[3]; float newOrigin[3]; 
+	float newAngle[3]; float newOrigin[3];
 
 	float distance = 168.0f;
 
@@ -996,14 +945,13 @@ void V_GetChaseOrigin(float* angles, float* origin, float distance, float* retur
 
 	// and smooth view
 	V_SmoothInterpolateAngles( v_lastAngles, newAngle, angle, 120.0f );
-			
+
 	V_GetChaseOrigin( angle, newOrigin, distance, origin );
 
 	VectorCopy(angle, v_lastAngles);
 }*/
 
-void V_GetSingleTargetCam(cl_entity_t* ent1, float* angle, float* origin)
-{
+void V_GetSingleTargetCam( cl_entity_t* ent1, float* angle, float* origin ) {
 	float newAngle[3];
 	float newOrigin[3];
 
@@ -1017,86 +965,87 @@ void V_GetSingleTargetCam(cl_entity_t* ent1, float* angle, float* origin)
 	float distance = 112.0f + (16.0f * dfactor); // get close if dramatic;
 
 	// go away in final scenes or if player just died
-	if ((flags & DRC_FLAG_FINAL) != 0)
+	if( (flags & DRC_FLAG_FINAL) != 0 ) {
 		distance *= 2.0f;
-	else if (deadPlayer)
+	}
+	else if( deadPlayer ) {
 		distance *= 1.5f;
+	}
 
 	// let v_lastDistance float smoothly away
 	v_lastDistance += v_frametime * 32.0f; // move unit per seconds back
 
-	if (distance > v_lastDistance)
+	if( distance > v_lastDistance ) {
 		distance = v_lastDistance;
-
-	VectorCopy(ent1->origin, newOrigin);
-
-	if (0 != ent1->player)
-	{
-		if (deadPlayer)
-			newOrigin[2] += 2; //laying on ground
-		else
-			newOrigin[2] += 17; // head level of living player
 	}
-	else
-		newOrigin[2] += 8; // object, tricky, must be above bomb in CS
+
+	VectorCopy( ent1->origin, newOrigin );
+
+	if( 0 != ent1->player ) {
+		if( deadPlayer ) {
+			newOrigin[2] += 2; //laying on ground
+		}
+		else {
+			newOrigin[2] += 17;
+		} // head level of living player
+	}
+	else {
+		newOrigin[2] += 8;
+	} // object, tricky, must be above bomb in CS
 
 	// we have no second target, choose view direction based on
 	// show front of primary target
-	VectorCopy(ent1->angles, newAngle);
+	VectorCopy( ent1->angles, newAngle );
 
 	// show dead players from front, normal players back
-	if ((flags & DRC_FLAG_FACEPLAYER) != 0)
+	if( (flags & DRC_FLAG_FACEPLAYER) != 0 )
 		newAngle[1] += 180.0f;
 
 
 	newAngle[0] += 12.5f * dfactor; // lower angle if dramatic
 
 	// if final scene (bomb), show from real high pos
-	if ((flags & DRC_FLAG_FINAL) != 0)
+	if( (flags & DRC_FLAG_FINAL) != 0 )
 		newAngle[0] = 22.5f;
 
 	// choose side of object/player
-	if ((flags & DRC_FLAG_SIDE) != 0)
+	if( (flags & DRC_FLAG_SIDE) != 0 )
 		newAngle[1] += 22.5f;
 	else
 		newAngle[1] -= 22.5f;
 
-	V_SmoothInterpolateAngles(v_lastAngles, newAngle, angle, 120.0f);
+	V_SmoothInterpolateAngles( v_lastAngles, newAngle, angle, 120.0f );
 
 	// HACK, if player is dead don't clip against his dead body, can't check this
-	V_GetChaseOrigin(angle, newOrigin, distance, origin);
+	V_GetChaseOrigin( angle, newOrigin, distance, origin );
 }
 
-float MaxAngleBetweenAngles(float* a1, float* a2)
-{
+float MaxAngleBetweenAngles( float* a1, float* a2 ) {
 	float d, maxd = 0.0f;
 
-	NormalizeAngles(a1);
-	NormalizeAngles(a2);
+	NormalizeAngles( a1 );
+	NormalizeAngles( a2 );
 
-	for (int i = 0; i < 3; i++)
-	{
+	for( int i = 0; i < 3; i++ ) {
 		d = a2[i] - a1[i];
-		if (d > 180)
-		{
+		if( d > 180 ) {
 			d -= 360;
 		}
-		else if (d < -180)
-		{
+		else if( d < -180 ) {
 			d += 360;
 		}
 
-		d = fabs(d);
+		d = fabs( d );
 
-		if (d > maxd)
+		if( d > maxd ) {
 			maxd = d;
+		}
 	}
 
 	return maxd;
 }
 
-void V_GetDoubleTargetsCam(cl_entity_t* ent1, cl_entity_t* ent2, float* angle, float* origin)
-{
+void V_GetDoubleTargetsCam( cl_entity_t* ent1, cl_entity_t* ent2, float* angle, float* origin ) {
 	float newAngle[3];
 	float newOrigin[3];
 	float tempVec[3];
@@ -1108,100 +1057,94 @@ void V_GetDoubleTargetsCam(cl_entity_t* ent1, cl_entity_t* ent2, float* angle, f
 	float distance = 112.0f + (16.0f * dfactor); // get close if dramatic;
 
 	// go away in final scenes or if player just died
-	if ((flags & DRC_FLAG_FINAL) != 0)
+	if( (flags & DRC_FLAG_FINAL) != 0 ) {
 		distance *= 2.0f;
+	}
 
 	// let v_lastDistance float smoothly away
 	v_lastDistance += v_frametime * 32.0f; // move unit per seconds back
 
-	if (distance > v_lastDistance)
+	if( distance > v_lastDistance ) {
 		distance = v_lastDistance;
+	}
 
-	VectorCopy(ent1->origin, newOrigin);
+	VectorCopy( ent1->origin, newOrigin );
 
-	if (0 != ent1->player)
+	if( 0 != ent1->player ) {
 		newOrigin[2] += 17; // head level of living player
-	else
-		newOrigin[2] += 8; // object, tricky, must be above bomb in CS
+	}
+	else {
+		newOrigin[2] += 8;
+	} // object, tricky, must be above bomb in CS
 
 	// get new angle towards second target
-	VectorSubtract(ent2->origin, ent1->origin, newAngle);
+	VectorSubtract( ent2->origin, ent1->origin, newAngle );
 
-	VectorAngles(newAngle, newAngle);
+	VectorAngles( newAngle, newAngle );
 	newAngle[0] = -newAngle[0];
 
 	// set angle diffrent in Dramtaic scenes
 	newAngle[0] += 12.5f * dfactor; // lower angle if dramatic
 
-	if ((flags & DRC_FLAG_SIDE) != 0)
+	if( (flags & DRC_FLAG_SIDE) != 0 )
 		newAngle[1] += 22.5f;
 	else
 		newAngle[1] -= 22.5f;
 
-	float d = MaxAngleBetweenAngles(v_lastAngles, newAngle);
+	float d = MaxAngleBetweenAngles( v_lastAngles, newAngle );
 
-	if ((d < v_cameraFocusAngle) && (v_cameraMode == CAM_MODE_RELAX))
-	{
+	if( (d < v_cameraFocusAngle) && (v_cameraMode == CAM_MODE_RELAX) ) {
 		// difference is to small and we are in relax camera mode, keep viewangles
-		VectorCopy(v_lastAngles, newAngle);
+		VectorCopy( v_lastAngles, newAngle );
 	}
-	else if ((d < v_cameraRelaxAngle) && (v_cameraMode == CAM_MODE_FOCUS))
-	{
+	else if( (d < v_cameraRelaxAngle) && (v_cameraMode == CAM_MODE_FOCUS) ) {
 		// we catched up with our target, relax again
 		v_cameraMode = CAM_MODE_RELAX;
 	}
-	else
-	{
+	else {
 		// target move too far away, focus camera again
 		v_cameraMode = CAM_MODE_FOCUS;
 	}
 
 	// and smooth view, if not a scene cut
-	if (v_resetCamera || (v_cameraMode == CAM_MODE_RELAX))
-	{
-		VectorCopy(newAngle, angle);
+	if( v_resetCamera || (v_cameraMode == CAM_MODE_RELAX) ) {
+		VectorCopy( newAngle, angle );
 	}
-	else
-	{
-		V_SmoothInterpolateAngles(v_lastAngles, newAngle, angle, 180.0f);
+	else {
+		V_SmoothInterpolateAngles( v_lastAngles, newAngle, angle, 180.0f );
 	}
 
-	V_GetChaseOrigin(newAngle, newOrigin, distance, origin);
+	V_GetChaseOrigin( newAngle, newOrigin, distance, origin );
 
 	// move position up, if very close at target
-	if (v_lastDistance < 64.0f)
+	if( v_lastDistance < 64.0f )
 		origin[2] += 16.0f * (1.0f - (v_lastDistance / 64.0f));
 
 	// calculate angle to second target
-	VectorSubtract(ent2->origin, origin, tempVec);
-	VectorAngles(tempVec, tempVec);
+	VectorSubtract( ent2->origin, origin, tempVec );
+	VectorAngles( tempVec, tempVec );
 	tempVec[0] = -tempVec[0];
 
 	/* take middle between two viewangles
 	InterpolateAngles( newAngle, tempVec, newAngle, 0.5f); */
 }
 
-void V_GetDirectedChasePosition(cl_entity_t* ent1, cl_entity_t* ent2, float* angle, float* origin)
-{
+void V_GetDirectedChasePosition( cl_entity_t* ent1, cl_entity_t* ent2, float* angle, float* origin ) {
 
-	if (v_resetCamera)
-	{
+	if( v_resetCamera ) {
 		v_lastDistance = 4096.0f;
 		// v_cameraMode = CAM_MODE_FOCUS;
 	}
 
-	if ((ent2 == (cl_entity_t*)0xFFFFFFFF) || (0 != ent1->player && (ent1->curstate.solid == SOLID_NOT)))
-	{
+	if( (ent2 == (cl_entity_t*) 0xFFFFFFFF) || (0 != ent1->player && (ent1->curstate.solid == SOLID_NOT)) ) {
 		// we have no second target or player just died
-		V_GetSingleTargetCam(ent1, angle, origin);
+		V_GetSingleTargetCam( ent1, angle, origin );
 	}
-	else if (ent2)
-	{
+	else if( ent2 ) {
 		// keep both target in view
-		V_GetDoubleTargetsCam(ent1, ent2, angle, origin);
+		V_GetDoubleTargetsCam( ent1, ent2, angle, origin );
 	}
-	else
-	{
+	else {
 		// second target disappeard somehow (dead)
 
 		// keep last good viewangle
@@ -1214,125 +1157,123 @@ void V_GetDirectedChasePosition(cl_entity_t* ent1, cl_entity_t* ent2, float* ang
 		float distance = 112.0f + (16.0f * dfactor); // get close if dramatic;
 
 		// go away in final scenes or if player just died
-		if ((flags & DRC_FLAG_FINAL) != 0)
+		if( (flags & DRC_FLAG_FINAL) != 0 ) {
 			distance *= 2.0f;
+		}
 
 		// let v_lastDistance float smoothly away
 		v_lastDistance += v_frametime * 32.0f; // move unit per seconds back
 
-		if (distance > v_lastDistance)
+		if( distance > v_lastDistance ) {
 			distance = v_lastDistance;
+		}
 
-		VectorCopy(ent1->origin, newOrigin);
+		VectorCopy( ent1->origin, newOrigin );
 
-		if (0 != ent1->player)
+		if( 0 != ent1->player ) {
 			newOrigin[2] += 17; // head level of living player
-		else
-			newOrigin[2] += 8; // object, tricky, must be above bomb in CS
+		}
+		else {
+			newOrigin[2] += 8;
+		} // object, tricky, must be above bomb in CS
 
-		V_GetChaseOrigin(angle, newOrigin, distance, origin);
+		V_GetChaseOrigin( angle, newOrigin, distance, origin );
 	}
 
-	VectorCopy(angle, v_lastAngles);
+	VectorCopy( angle, v_lastAngles );
 }
 
-void V_GetChasePos(int target, float* cl_angles, float* origin, float* angles)
-{
+void V_GetChasePos( int target, float* cl_angles, float* origin, float* angles ) {
 	cl_entity_t* ent = NULL;
 
-	if (0 != target)
-	{
-		ent = gEngfuncs.GetEntityByIndex(target);
+	if( 0 != target ) {
+		ent = gEngfuncs.GetEntityByIndex( target );
 	}
 
-	if (!ent)
-	{
+	if( !ent ) {
 		// just copy a save in-map position
-		VectorCopy(vJumpAngles, angles);
-		VectorCopy(vJumpOrigin, origin);
+		VectorCopy( vJumpAngles, angles );
+		VectorCopy( vJumpOrigin, origin );
 		return;
 	}
 
 
-
-	if (0 != gHUD.m_Spectator.m_autoDirector->value)
-	{
-		if (0 != g_iUser3)
-			V_GetDirectedChasePosition(ent, gEngfuncs.GetEntityByIndex(g_iUser3),
-				angles, origin);
-		else
-			V_GetDirectedChasePosition(ent, (cl_entity_t*)0xFFFFFFFF,
-				angles, origin);
+	if( 0 != gHUD.m_Spectator.m_autoDirector->value ) {
+		if( 0 != g_iUser3 ) {
+			V_GetDirectedChasePosition(
+				ent, gEngfuncs.GetEntityByIndex( g_iUser3 ),
+				angles, origin
+			);
+		}
+		else {
+			V_GetDirectedChasePosition(
+				ent, (cl_entity_t*) 0xFFFFFFFF,
+				angles, origin
+			);
+		}
 	}
-	else
-	{
-		if (cl_angles == NULL) // no mouse angles given, use entity angles ( locked mode )
+	else {
+		if( cl_angles == NULL ) // no mouse angles given, use entity angles ( locked mode )
 		{
-			VectorCopy(ent->angles, angles);
+			VectorCopy( ent->angles, angles );
 			angles[0] *= -1;
 		}
-		else
-			VectorCopy(cl_angles, angles);
+		else VectorCopy( cl_angles, angles );
 
 
-		VectorCopy(ent->origin, origin);
+		VectorCopy( ent->origin, origin );
 
-		VectorAdd(origin, VEC_VIEW, origin); // some offset
+		VectorAdd( origin, VEC_VIEW, origin ); // some offset
 
-		V_GetChaseOrigin(angles, origin, cl_chasedist->value, origin);
+		V_GetChaseOrigin( angles, origin, cl_chasedist->value, origin );
 	}
 
 	v_resetCamera = false;
 }
 
-void V_ResetChaseCam()
-{
+void V_ResetChaseCam() {
 	v_resetCamera = true;
 }
 
 
-void V_GetInEyePos(int target, float* origin, float* angles)
-{
-	if (0 == target)
-	{
+void V_GetInEyePos( int target, float* origin, float* angles ) {
+	if( 0 == target ) {
 		// just copy a save in-map position
-		VectorCopy(vJumpAngles, angles);
-		VectorCopy(vJumpOrigin, origin);
+		VectorCopy( vJumpAngles, angles );
+		VectorCopy( vJumpOrigin, origin );
 		return;
 	}
 
 
-	cl_entity_t* ent = gEngfuncs.GetEntityByIndex(target);
+	cl_entity_t* ent = gEngfuncs.GetEntityByIndex( target );
 
-	if (!ent)
+	if( !ent ) {
 		return;
+	}
 
-	VectorCopy(ent->origin, origin);
-	VectorCopy(ent->angles, angles);
+	VectorCopy( ent->origin, origin );
+	VectorCopy( ent->angles, angles );
 
 	angles[PITCH] *= -3.0f; // see CL_ProcessEntityUpdate()
 
-	if (ent->curstate.solid == SOLID_NOT)
-	{
+	if( ent->curstate.solid == SOLID_NOT ) {
 		angles[ROLL] = 80; // dead view angle
-		VectorAdd(origin, VEC_DEAD_VIEW, origin);
+		VectorAdd( origin, VEC_DEAD_VIEW, origin );
 	}
-	else if (ent->curstate.usehull == 1)
-	{
-		VectorAdd(origin, VEC_DUCK_VIEW, origin);
+	else if( ent->curstate.usehull == 1 ) {
+		VectorAdd( origin, VEC_DUCK_VIEW, origin );
 	}
 	else
 		// exacty eye position can't be caluculated since it depends on
 		// client values like cl_bobcycle, this offset matches the default values
-		VectorAdd(origin, VEC_VIEW, origin);
+		VectorAdd( origin, VEC_VIEW, origin );
 }
 
-void V_GetMapFreePosition(float* cl_angles, float* origin, float* angles)
-{
+void V_GetMapFreePosition( float* cl_angles, float* origin, float* angles ) {
 	Vector forward;
 	Vector zScaledTarget;
 
-	VectorCopy(cl_angles, angles);
+	VectorCopy( cl_angles, angles );
 
 	// modify angles since we don't wanna see map's bottom
 	angles[0] = 51.25f + 38.75f * (angles[0] / 90.0f);
@@ -1342,98 +1283,91 @@ void V_GetMapFreePosition(float* cl_angles, float* origin, float* angles)
 	zScaledTarget[2] = gHUD.m_Spectator.m_mapOrigin[2] * ((90.0f - angles[0]) / 90.0f);
 
 
-	AngleVectors(angles, forward, NULL, NULL);
+	AngleVectors( angles, forward, NULL, NULL );
 
-	VectorNormalize(forward);
+	VectorNormalize( forward );
 
-	VectorMA(zScaledTarget, -(4096.0f / gHUD.m_Spectator.m_mapZoom), forward, origin);
+	VectorMA( zScaledTarget, -(4096.0f / gHUD.m_Spectator.m_mapZoom), forward, origin );
 }
 
-void V_GetMapChasePosition(int target, float* cl_angles, float* origin, float* angles)
-{
+void V_GetMapChasePosition( int target, float* cl_angles, float* origin, float* angles ) {
 	Vector forward;
 
-	if (0 != target)
-	{
-		cl_entity_t* ent = gEngfuncs.GetEntityByIndex(target);
+	if( 0 != target ) {
+		cl_entity_t* ent = gEngfuncs.GetEntityByIndex( target );
 
-		if (0 != gHUD.m_Spectator.m_autoDirector->value)
-		{
+		if( 0 != gHUD.m_Spectator.m_autoDirector->value ) {
 			// this is done to get the angles made by director mode
-			V_GetChasePos(target, cl_angles, origin, angles);
-			VectorCopy(ent->origin, origin);
+			V_GetChasePos( target, cl_angles, origin, angles );
+			VectorCopy( ent->origin, origin );
 
 			// keep fix chase angle horizontal
 			angles[0] = 45.0f;
 		}
-		else
-		{
-			VectorCopy(cl_angles, angles);
-			VectorCopy(ent->origin, origin);
+		else {
+			VectorCopy( cl_angles, angles );
+			VectorCopy( ent->origin, origin );
 
 			// modify angles since we don't wanna see map's bottom
 			angles[0] = 51.25f + 38.75f * (angles[0] / 90.0f);
 		}
 	}
-	else
-	{
+	else {
 		// keep out roaming position, but modify angles
-		VectorCopy(cl_angles, angles);
+		VectorCopy( cl_angles, angles );
 		angles[0] = 51.25f + 38.75f * (angles[0] / 90.0f);
 	}
 
 	origin[2] *= ((90.0f - angles[0]) / 90.0f);
 	angles[2] = 0.0f; // don't roll angle (if chased player is dead)
 
-	AngleVectors(angles, forward, NULL, NULL);
+	AngleVectors( angles, forward, NULL, NULL );
 
-	VectorNormalize(forward);
+	VectorNormalize( forward );
 
-	VectorMA(origin, -1536, forward, origin);
+	VectorMA( origin, -1536, forward, origin );
 }
 
-int V_FindViewModelByWeaponModel(int weaponindex)
-{
+int V_FindViewModelByWeaponModel( int weaponindex ) {
 
 	static const char* modelmap[][2] = {
 
-		{"models/p_crossbow.mdl", "models/v_crossbow.mdl"},
-		{"models/p_crowbar.mdl", "models/v_crowbar.mdl"},
-		{"models/p_egon.mdl", "models/v_egon.mdl"},
-		{"models/p_gauss.mdl", "models/v_gauss.mdl"},
-		{"models/p_9mmhandgun.mdl", "models/v_9mmhandgun.mdl"},
-		{"models/p_grenade.mdl", "models/v_grenade.mdl"},
-		{"models/p_hgun.mdl", "models/v_hgun.mdl"},
-		{"models/p_9mmAR.mdl", "models/v_9mmAR.mdl"},
-		{"models/p_357.mdl", "models/v_357.mdl"},
-		{"models/p_rpg.mdl", "models/v_rpg.mdl"},
-		{"models/p_shotgun.mdl", "models/v_shotgun.mdl"},
-		{"models/p_squeak.mdl", "models/v_squeak.mdl"},
-		{"models/p_tripmine.mdl", "models/v_tripmine.mdl"},
-		{"models/p_satchel_radio.mdl", "models/v_satchel_radio.mdl"},
-		{"models/p_satchel.mdl", "models/v_satchel.mdl"},
-		{NULL, NULL}};
+		{ "models/p_crossbow.mdl",      "models/v_crossbow.mdl" },
+		{ "models/p_crowbar.mdl",       "models/v_crowbar.mdl" },
+		{ "models/p_egon.mdl",          "models/v_egon.mdl" },
+		{ "models/p_gauss.mdl",         "models/v_gauss.mdl" },
+		{ "models/p_9mmhandgun.mdl",    "models/v_9mmhandgun.mdl" },
+		{ "models/p_grenade.mdl",       "models/v_grenade.mdl" },
+		{ "models/p_hgun.mdl",          "models/v_hgun.mdl" },
+		{ "models/p_9mmAR.mdl",         "models/v_9mmAR.mdl" },
+		{ "models/p_357.mdl",           "models/v_357.mdl" },
+		{ "models/p_rpg.mdl",           "models/v_rpg.mdl" },
+		{ "models/p_shotgun.mdl",       "models/v_shotgun.mdl" },
+		{ "models/p_squeak.mdl",        "models/v_squeak.mdl" },
+		{ "models/p_tripmine.mdl",      "models/v_tripmine.mdl" },
+		{ "models/p_satchel_radio.mdl", "models/v_satchel_radio.mdl" },
+		{ "models/p_satchel.mdl",       "models/v_satchel.mdl" },
+		{ NULL, NULL }
+	};
 
-	struct model_s* weaponModel = IEngineStudio.GetModelByIndex(weaponindex);
+	struct model_s* weaponModel = IEngineStudio.GetModelByIndex( weaponindex );
 
-	if (weaponModel)
-	{
-		int len = strlen(weaponModel->name);
+	if( weaponModel ) {
+		int len = strlen( weaponModel->name );
 		int i = 0;
 
-		while (modelmap[i] != NULL)
-		{
-			if (!strnicmp(weaponModel->name, modelmap[i][0], len))
-			{
-				return gEngfuncs.pEventAPI->EV_FindModelIndex(modelmap[i][1]);
+		while( modelmap[i] != NULL ) {
+			if( !strnicmp( weaponModel->name, modelmap[i][0], len ) ) {
+				return gEngfuncs.pEventAPI->EV_FindModelIndex( modelmap[i][1] );
 			}
 			i++;
 		}
 
 		return 0;
 	}
-	else
+	else {
 		return 0;
+	}
 }
 
 
@@ -1443,200 +1377,175 @@ V_CalcSpectatorRefdef
 
 ==================
 */
-void V_CalcSpectatorRefdef(struct ref_params_s* pparams)
-{
-	static Vector velocity(0.0f, 0.0f, 0.0f);
+void V_CalcSpectatorRefdef( struct ref_params_s* pparams ) {
+	static Vector velocity( 0.0f, 0.0f, 0.0f );
 
 	static int lastWeaponModelIndex = 0;
 	static int lastViewModelIndex = 0;
 
-	cl_entity_t* ent = gEngfuncs.GetEntityByIndex(g_iUser2);
+	cl_entity_t* ent = gEngfuncs.GetEntityByIndex( g_iUser2 );
 
 	pparams->onlyClientDraw = 0;
 
 	// refresh position
-	VectorCopy(pparams->simorg, v_sim_org);
+	VectorCopy( pparams->simorg, v_sim_org );
 
 	// get old values
-	VectorCopy(pparams->cl_viewangles, v_cl_angles);
-	VectorCopy(pparams->viewangles, v_angles);
-	VectorCopy(pparams->vieworg, v_origin);
+	VectorCopy( pparams->cl_viewangles, v_cl_angles );
+	VectorCopy( pparams->viewangles, v_angles );
+	VectorCopy( pparams->vieworg, v_origin );
 
-	if ((g_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE) && ent)
-	{
+	if( (g_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE) && ent ) {
 		// calculate player velocity
 		float timeDiff = ent->curstate.msg_time - ent->prevstate.msg_time;
 
-		if (timeDiff > 0)
-		{
+		if( timeDiff > 0 ) {
 			Vector distance;
-			VectorSubtract(ent->prevstate.origin, ent->curstate.origin, distance);
-			VectorScale(distance, 1 / timeDiff, distance);
+			VectorSubtract( ent->prevstate.origin, ent->curstate.origin, distance );
+			VectorScale( distance, 1 / timeDiff, distance );
 
 			velocity[0] = velocity[0] * 0.9f + distance[0] * 0.1f;
 			velocity[1] = velocity[1] * 0.9f + distance[1] * 0.1f;
 			velocity[2] = velocity[2] * 0.9f + distance[2] * 0.1f;
 
-			VectorCopy(velocity, pparams->simvel);
+			VectorCopy( velocity, pparams->simvel );
 		}
 
 		// predict missing client data and set weapon model ( in HLTV mode or inset in eye mode )
-		if (0 != gEngfuncs.IsSpectateOnly())
-		{
-			V_GetInEyePos(g_iUser2, pparams->simorg, pparams->cl_viewangles);
+		if( 0 != gEngfuncs.IsSpectateOnly() ) {
+			V_GetInEyePos( g_iUser2, pparams->simorg, pparams->cl_viewangles );
 
 			pparams->health = 1;
 
 			cl_entity_t* gunModel = gEngfuncs.GetViewModel();
 
-			if (lastWeaponModelIndex != ent->curstate.weaponmodel)
-			{
+			if( lastWeaponModelIndex != ent->curstate.weaponmodel ) {
 				// weapon model changed
 
 				lastWeaponModelIndex = ent->curstate.weaponmodel;
-				lastViewModelIndex = V_FindViewModelByWeaponModel(lastWeaponModelIndex);
-				if (0 != lastViewModelIndex)
-				{
-					gEngfuncs.pfnWeaponAnim(0, 0); // reset weapon animation
+				lastViewModelIndex = V_FindViewModelByWeaponModel( lastWeaponModelIndex );
+				if( 0 != lastViewModelIndex ) {
+					gEngfuncs.pfnWeaponAnim( 0, 0 ); // reset weapon animation
 				}
-				else
-				{
+				else {
 					// model not found
 					gunModel->model = NULL; // disable weapon model
 					lastWeaponModelIndex = lastViewModelIndex = 0;
 				}
 			}
 
-			if (0 != lastViewModelIndex)
-			{
-				gunModel->model = IEngineStudio.GetModelByIndex(lastViewModelIndex);
+			if( 0 != lastViewModelIndex ) {
+				gunModel->model = IEngineStudio.GetModelByIndex( lastViewModelIndex );
 				gunModel->curstate.modelindex = lastViewModelIndex;
 				gunModel->curstate.frame = 0;
 				gunModel->curstate.colormap = 0;
 				gunModel->index = g_iUser2;
 			}
-			else
-			{
+			else {
 				gunModel->model = NULL; // disable weaopn model
 			}
 		}
-		else
-		{
+		else {
 			// only get viewangles from entity
-			VectorCopy(ent->angles, pparams->cl_viewangles);
+			VectorCopy( ent->angles, pparams->cl_viewangles );
 			pparams->cl_viewangles[PITCH] *= -3.0f; // see CL_ProcessEntityUpdate()
 		}
 	}
 
 	v_frametime = pparams->frametime;
 
-	if (pparams->nextView == 0)
-	{
+	if( pparams->nextView == 0 ) {
 		// first renderer cycle, full screen
 
-		switch (g_iUser1)
-		{
-		case OBS_CHASE_LOCKED:
-			V_GetChasePos(g_iUser2, NULL, v_origin, v_angles);
-			break;
+		switch( g_iUser1 ) {
+			case OBS_CHASE_LOCKED: V_GetChasePos( g_iUser2, NULL, v_origin, v_angles );
+				break;
 
-		case OBS_CHASE_FREE:
-			V_GetChasePos(g_iUser2, v_cl_angles, v_origin, v_angles);
-			break;
+			case OBS_CHASE_FREE: V_GetChasePos( g_iUser2, v_cl_angles, v_origin, v_angles );
+				break;
 
-		case OBS_ROAMING:
-			VectorCopy(v_cl_angles, v_angles);
-			VectorCopy(v_sim_org, v_origin);
+			case OBS_ROAMING: VectorCopy( v_cl_angles, v_angles );
+				VectorCopy( v_sim_org, v_origin );
 
-			// override values if director is active
-			gHUD.m_Spectator.GetDirectorCamera(v_origin, v_angles);
-			break;
+				// override values if director is active
+				gHUD.m_Spectator.GetDirectorCamera( v_origin, v_angles );
+				break;
 
-		case OBS_IN_EYE:
-			V_CalcNormalRefdef(pparams);
-			break;
+			case OBS_IN_EYE: V_CalcNormalRefdef( pparams );
+				break;
 
-		case OBS_MAP_FREE:
-			pparams->onlyClientDraw = 1;
-			V_GetMapFreePosition(v_cl_angles, v_origin, v_angles);
-			break;
+			case OBS_MAP_FREE: pparams->onlyClientDraw = 1;
+				V_GetMapFreePosition( v_cl_angles, v_origin, v_angles );
+				break;
 
-		case OBS_MAP_CHASE:
-			pparams->onlyClientDraw = 1;
-			V_GetMapChasePosition(g_iUser2, v_cl_angles, v_origin, v_angles);
-			break;
+			case OBS_MAP_CHASE: pparams->onlyClientDraw = 1;
+				V_GetMapChasePosition( g_iUser2, v_cl_angles, v_origin, v_angles );
+				break;
 		}
 
-		if (0 != gHUD.m_Spectator.m_pip->value)
-			pparams->nextView = 1; // force a second renderer view
+		if( 0 != gHUD.m_Spectator.m_pip->value ) {
+			pparams->nextView = 1;
+		} // force a second renderer view
 
 		gHUD.m_Spectator.m_iDrawCycle = 0;
 	}
-	else
-	{
+	else {
 		// second renderer cycle, inset window
 
 		// set inset parameters
-		pparams->viewport[0] = XRES(gHUD.m_Spectator.m_OverviewData.insetWindowX); // change viewport to inset window
-		pparams->viewport[1] = YRES(gHUD.m_Spectator.m_OverviewData.insetWindowY);
-		pparams->viewport[2] = XRES(gHUD.m_Spectator.m_OverviewData.insetWindowWidth);
-		pparams->viewport[3] = YRES(gHUD.m_Spectator.m_OverviewData.insetWindowHeight);
+		pparams->viewport[0] = XRES( gHUD.m_Spectator.m_OverviewData.insetWindowX ); // change viewport to inset window
+		pparams->viewport[1] = YRES( gHUD.m_Spectator.m_OverviewData.insetWindowY );
+		pparams->viewport[2] = XRES( gHUD.m_Spectator.m_OverviewData.insetWindowWidth );
+		pparams->viewport[3] = YRES( gHUD.m_Spectator.m_OverviewData.insetWindowHeight );
 		pparams->nextView = 0; // on further view
 
 		// override some settings in certain modes
-		switch ((int)gHUD.m_Spectator.m_pip->value)
-		{
-		case INSET_CHASE_FREE:
-			V_GetChasePos(g_iUser2, v_cl_angles, v_origin, v_angles);
-			break;
+		switch( (int) gHUD.m_Spectator.m_pip->value ) {
+			case INSET_CHASE_FREE: V_GetChasePos( g_iUser2, v_cl_angles, v_origin, v_angles );
+				break;
 
-		case INSET_IN_EYE:
-			V_CalcNormalRefdef(pparams);
-			break;
+			case INSET_IN_EYE: V_CalcNormalRefdef( pparams );
+				break;
 
-		case INSET_MAP_FREE:
-			pparams->onlyClientDraw = 1;
-			V_GetMapFreePosition(v_cl_angles, v_origin, v_angles);
-			break;
+			case INSET_MAP_FREE: pparams->onlyClientDraw = 1;
+				V_GetMapFreePosition( v_cl_angles, v_origin, v_angles );
+				break;
 
-		case INSET_MAP_CHASE:
-			pparams->onlyClientDraw = 1;
+			case INSET_MAP_CHASE: pparams->onlyClientDraw = 1;
 
-			if (g_iUser1 == OBS_ROAMING)
-				V_GetMapChasePosition(0, v_cl_angles, v_origin, v_angles);
-			else
-				V_GetMapChasePosition(g_iUser2, v_cl_angles, v_origin, v_angles);
+				if( g_iUser1 == OBS_ROAMING ) {
+					V_GetMapChasePosition( 0, v_cl_angles, v_origin, v_angles );
+				}
+				else {
+					V_GetMapChasePosition( g_iUser2, v_cl_angles, v_origin, v_angles );
+				}
 
-			break;
+				break;
 		}
 
 		gHUD.m_Spectator.m_iDrawCycle = 1;
 	}
 
 	// write back new values into pparams
-	VectorCopy(v_cl_angles, pparams->cl_viewangles);
-	VectorCopy(v_angles, pparams->viewangles)
-		VectorCopy(v_origin, pparams->vieworg);
+	VectorCopy( v_cl_angles, pparams->cl_viewangles );
+	VectorCopy( v_angles, pparams->viewangles )
+		VectorCopy( v_origin, pparams->vieworg );
 }
 
 
-
-void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams)
-{
+void DLLEXPORT V_CalcRefdef( struct ref_params_s* pparams ) {
 	//	RecClCalcRefdef(pparams);
 
 	// intermission / finale rendering
-	if (0 != pparams->intermission)
-	{
-		V_CalcIntermissionRefdef(pparams);
+	if( 0 != pparams->intermission ) {
+		V_CalcIntermissionRefdef( pparams );
 	}
-	else if (0 != pparams->spectator || 0 != g_iUser1) // g_iUser true if in spectator mode
+	else if( 0 != pparams->spectator || 0 != g_iUser1 ) // g_iUser true if in spectator mode
 	{
-		V_CalcSpectatorRefdef(pparams);
+		V_CalcSpectatorRefdef( pparams );
 	}
-	else if (0 == pparams->paused)
-	{
-		V_CalcNormalRefdef(pparams);
+	else if( 0 == pparams->paused ) {
+		V_CalcNormalRefdef( pparams );
 	}
 
 	/*
@@ -1665,14 +1574,13 @@ V_DropPunchAngle
 
 =============
 */
-void V_DropPunchAngle(float frametime, float* ev_punchangle)
-{
+void V_DropPunchAngle( float frametime, float* ev_punchangle ) {
 	float len;
 
-	len = VectorNormalize(ev_punchangle);
+	len = VectorNormalize( ev_punchangle );
 	len -= (10.0 + len * 0.5) * frametime;
-	len = V_max(len, 0.0);
-	VectorScale(ev_punchangle, len, ev_punchangle);
+	len = V_max( len, 0.0 );
+	VectorScale( ev_punchangle, len, ev_punchangle );
 }
 
 /*
@@ -1682,8 +1590,7 @@ V_PunchAxis
 Client side punch effect
 =============
 */
-void V_PunchAxis(int axis, float punch)
-{
+void V_PunchAxis( int axis, float punch ) {
 	ev_punchangle[axis] = punch;
 }
 
@@ -1692,22 +1599,31 @@ void V_PunchAxis(int axis, float punch)
 V_Init
 =============
 */
-void V_Init()
-{
-	gEngfuncs.pfnAddCommand("centerview", V_StartPitchDrift);
+void V_Init() {
+	gEngfuncs.pfnAddCommand( "centerview", V_StartPitchDrift );
 
-	scr_ofsx = gEngfuncs.pfnRegisterVariable("scr_ofsx", "0", 0);
-	scr_ofsy = gEngfuncs.pfnRegisterVariable("scr_ofsy", "0", 0);
-	scr_ofsz = gEngfuncs.pfnRegisterVariable("scr_ofsz", "0", 0);
+	scr_ofsx = gEngfuncs.pfnRegisterVariable( "scr_ofsx", "0", 0 );
+	scr_ofsy = gEngfuncs.pfnRegisterVariable( "scr_ofsy", "0", 0 );
+	scr_ofsz = gEngfuncs.pfnRegisterVariable( "scr_ofsz", "0", 0 );
 
-	v_centermove = gEngfuncs.pfnRegisterVariable("v_centermove", "0.15", 0);
-	v_centerspeed = gEngfuncs.pfnRegisterVariable("v_centerspeed", "500", 0);
+	v_centermove = gEngfuncs.pfnRegisterVariable( "v_centermove", "0.15", 0 );
+	v_centerspeed = gEngfuncs.pfnRegisterVariable( "v_centerspeed", "500", 0 );
 
-	cl_bobcycle = gEngfuncs.pfnRegisterVariable("cl_bobcycle", "0.8", 0); // best default for my experimental gun wag (sjb)
-	cl_bob = gEngfuncs.pfnRegisterVariable("cl_bob", "0.01", 0);		  // best default for my experimental gun wag (sjb)
-	cl_bobup = gEngfuncs.pfnRegisterVariable("cl_bobup", "0.5", 0);
-	cl_waterdist = gEngfuncs.pfnRegisterVariable("cl_waterdist", "4", 0);
-	cl_chasedist = gEngfuncs.pfnRegisterVariable("cl_chasedist", "112", 0);
+	cl_bobcycle = gEngfuncs.pfnRegisterVariable(
+		"cl_bobcycle",
+		"1.0",
+		0
+	); // best default for my experimental gun wag (sjb)
+
+	cl_bob = gEngfuncs.pfnRegisterVariable(
+		"cl_bob",
+		"0.01",
+		0
+	);          // best default for my experimental gun wag (sjb)
+
+	cl_bobup = gEngfuncs.pfnRegisterVariable( "cl_bobup", "0.5", 0 );
+	cl_waterdist = gEngfuncs.pfnRegisterVariable( "cl_waterdist", "4", 0 );
+	cl_chasedist = gEngfuncs.pfnRegisterVariable( "cl_chasedist", "112", 0 );
 }
 
 
@@ -1720,17 +1636,16 @@ extern float in_fov;
 CalcFov
 ====================
 */
-float CalcFov(float fov_x, float width, float height)
-{
+float CalcFov( float fov_x, float width, float height ) {
 	float a;
 	float x;
 
-	if (fov_x < 1 || fov_x > 179)
+	if( fov_x < 1 || fov_x > 179 )
 		fov_x = 90; // error, set to 90
 
-	x = width / tan(fov_x / 360 * M_PI);
+	x = width / tan( fov_x / 360 * M_PI );
 
-	a = atan(height / x);
+	a = atan( height / x );
 
 	a = a * 360 / M_PI;
 
@@ -1739,8 +1654,7 @@ float CalcFov(float fov_x, float width, float height)
 
 int hitent = -1;
 
-void V_Move(int mx, int my)
-{
+void V_Move( int mx, int my ) {
 	float fov;
 	float fx, fy;
 	float dx, dy;
@@ -1752,13 +1666,13 @@ void V_Move(int mx, int my)
 	Vector farpoint;
 	pmtrace_t tr;
 
-	fov = CalcFov(in_fov, (float)ScreenWidth, (float)ScreenHeight);
+	fov = CalcFov( in_fov, (float) ScreenWidth, (float) ScreenHeight );
 
-	c_x = (float)ScreenWidth / 2.0;
-	c_y = (float)ScreenHeight / 2.0;
+	c_x = (float) ScreenWidth / 2.0;
+	c_y = (float) ScreenHeight / 2.0;
 
-	dx = (float)mx - c_x;
-	dy = (float)my - c_y;
+	dx = (float) mx - c_x;
+	dy = (float) my - c_y;
 
 	// Proportion we moved in each direction
 	fx = dx / c_x;
@@ -1773,20 +1687,18 @@ void V_Move(int mx, int my)
 	newangles[PITCH] += dY;
 
 	// Now rotate v_forward around that point
-	AngleVectors(newangles, forward, right, up);
+	AngleVectors( newangles, forward, right, up );
 
 	farpoint = v_origin + 8192 * forward;
 
 	// Trace
-	tr = *(gEngfuncs.PM_TraceLine((float*)&v_origin, (float*)&farpoint, PM_TRACELINE_PHYSENTSONLY, 2 /*point sized hull*/, -1));
+	tr = *(gEngfuncs.PM_TraceLine( (float*) &v_origin, (float*) &farpoint, PM_TRACELINE_PHYSENTSONLY, 2 /*point sized hull*/, -1 ));
 
-	if (tr.fraction != 1.0 && tr.ent != 0)
-	{
-		hitent = PM_GetPhysEntInfo(tr.ent);
-		PM_ParticleLine((float*)&v_origin, (float*)&tr.endpos, 5, 1.0, 0.0);
+	if( tr.fraction != 1.0 && tr.ent != 0 ) {
+		hitent = PM_GetPhysEntInfo( tr.ent );
+		PM_ParticleLine( (float*) &v_origin, (float*) &tr.endpos, 5, 1.0, 0.0 );
 	}
-	else
-	{
+	else {
 		hitent = -1;
 	}
 }
