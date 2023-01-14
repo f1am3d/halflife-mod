@@ -1,11 +1,12 @@
 // view/refresh setup functions
 
+#include <mathlib.h>
+
 #include "hud.h"
 #include "cl_util.h"
 #include "cvardef.h"
 #include "usercmd.h"
 #include "const.h"
-
 #include "entity_state.h"
 #include "cl_entity.h"
 #include "ref_params.h"
@@ -22,7 +23,7 @@
 #include "r_studioint.h"
 #include "com_model.h"
 #include "kbutton.h"
-#include <mathlib.h>
+#include "view_utils.h"
 
 
 int CL_IsThirdPerson();
@@ -103,7 +104,7 @@ cvar_t v_ipitch_level = { "v_ipitch_level", "0.3", 0, 0.3 };
 float v_idlescale; // used by TFC for concussion grenade effect
 
 // MOD 
-int stepTime = 750; // ms
+float viewStepTime = 750.0; // ms
 
 //=============================================================================
 /*
@@ -176,45 +177,27 @@ float V_CalcBob( struct ref_params_s* pparams ) {
 	static float lastTime = 0;
 	// static float& frametime = pparams->frametime;
 	static float& time = pparams->time;	// float seconds
-	static int onground = pparams->onground;
-	static float limit = 10.0;
-	float totalVelocity = 0.0;
-	Vector2D velocity = Vector2D(
-		pparams->simvel[0],
-		pparams->simvel[1]
-	);
+	static int& onground = pparams->onground;
 
+	float limit = 10.0;
+	float maxVelocity = 100.0;
+	float totalVelocity = 0.0;
 
 	if( onground == -1 ) {
 		return bob;
 	}
 
-	totalVelocity = sqrt(
-		pow( abs( velocity.x ), 2 )
-		+ pow( abs( velocity.y ), 2 )
-	);
+	totalVelocity = getHorizontalVelocityFactor( reinterpret_cast<Vector2D &>(pparams->simvel) );
 
+	float velocityFactor = NormalizeValue( totalVelocity, maxVelocity );
+	float power = NormalizeToMaximumValue( totalVelocity * cl_bobcycle->value, limit );
+	float stepFactor = getStepFactor( time, viewStepTime );
 
-	float msTime = time * 1000;
-	float power = NormalizeToMaximumValue(totalVelocity * cl_bobcycle->value, limit);
-	float stepCycle = 0.0; 
-	float stepMod = fmod( msTime, stepTime );
-	
-	if( stepMod < (stepTime / 2.0) ) {
-		stepCycle = NormalizeValue( stepMod, stepTime );
-	}
-	else {
-		stepCycle = NormalizeValue( stepTime - stepMod, stepTime );
-	}
-
-	stepCycle = NormalizeValue( stepCycle, 0.5 ) - 0.5;
-
-	bob = sin( stepCycle ) * power;
-
-	ConsolePrintFloat( bob );
+	bob = sin( stepFactor ) * velocityFactor * power;
 
 	return bob;
 }
+
 
 /*
 ===============
@@ -222,10 +205,16 @@ V_CalcRoll
 Used by view and sv_user
 ===============
 */
-float V_CalcRoll( Vector angles, Vector velocity, float rollangle, float rollspeed ) {
+float V_CalcRoll(
+	Vector angles,
+	Vector velocity,
+	const float rollangle,
+	const float rollspeed
+) {
 	float sign;
 	float side;
-	float value;
+	float roll = 0.0;
+    float velocityFactor = 0.0;
 	Vector forward, right, up;
 
 	AngleVectors( angles, forward, right, up );
@@ -234,14 +223,16 @@ float V_CalcRoll( Vector angles, Vector velocity, float rollangle, float rollspe
 	sign = side < 0 ? -1 : 1;
 	side = fabs( side );
 
-	value = rollangle;
 	if( side < rollspeed ) {
-		side = side * value / rollspeed;
+		side = side * rollangle / rollspeed;
 	}
 	else {
-		side = value;
+		side = rollangle;
 	}
-	return side * sign;
+
+	roll = side * sign;
+
+	return roll;
 }
 
 typedef struct pitchdrift_s {
@@ -397,17 +388,33 @@ Roll is induced by movement and damage
 ==============
 */
 void V_CalcViewRoll( struct ref_params_s* pparams ) {
+	static float* angles = pparams->viewangles;
+	static float* velocity = pparams->simvel;
+
 	float side;
-	cl_entity_t* viewentity;
+    cl_entity_t* viewentity;
+
 
 	viewentity = gEngfuncs.GetEntityByIndex( pparams->viewentity );
+
 	if( !viewentity ) {
 		return;
 	}
 
-	side = V_CalcRoll( viewentity->angles, pparams->simvel, cl_rollangle->value, cl_rollspeed->value );
+	side = V_CalcRoll(
+		viewentity->angles,
+		pparams->simvel,
+		cl_rollangle->value,
+		cl_rollspeed->value
+	);
 
-	pparams->viewangles[ROLL] += side;
+	float stepFactor = getStepFactor( pparams->time, viewStepTime );
+    float velocityFactor = NormalizeValue(
+        getHorizontalVelocityFactor( reinterpret_cast<Vector2D &>(pparams->simvel) ),
+        1000
+    );
+
+    pparams->viewangles[ROLL] = side * -1 + (velocityFactor * stepFactor * cl_rollangle->value);
 
 	if( pparams->health <= 0 && (pparams->viewheight[2] != 0) ) {
 		// only roll the view if the player is dead and the viewheight[2] is nonzero
@@ -415,6 +422,8 @@ void V_CalcViewRoll( struct ref_params_s* pparams ) {
 		pparams->viewangles[ROLL] = 80; // dead view angle
 		return;
 	}
+
+	ConsolePrintFloat( pparams->viewangles[ROLL] );
 }
 
 
