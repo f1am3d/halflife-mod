@@ -22,6 +22,7 @@
 #include "r_studioint.h"
 #include "com_model.h"
 #include "kbutton.h"
+#include <mathlib.h>
 
 
 int CL_IsThirdPerson();
@@ -102,7 +103,7 @@ cvar_t v_ipitch_level = { "v_ipitch_level", "0.3", 0, 0.3 };
 float v_idlescale; // used by TFC for concussion grenade effect
 
 // MOD 
-int vStepTime = 500; // ms
+int stepTime = 750; // ms
 
 //=============================================================================
 /*
@@ -162,45 +163,55 @@ void V_InterpolateAngles( float *start, float *end, float *output, float frac )
 	V_NormalizeAngles( output );
 } */
 
+void ConsolePrintFloat( float& value ) {
+	char buffer[64];
+	snprintf( buffer, sizeof buffer, "%f\n", value );
+
+	ConsolePrint( buffer );
+}
+
 // Quakeworld bob code, this fixes jitters in the mutliplayer since the clock (pparams->time) isn't quite linear
 float V_CalcBob( struct ref_params_s* pparams ) {
-	static float bob;
-	float cycle;
-	static float lasttime = 0;
-	static float frametime = pparams->frametime;
+	static float bob = 0.0;
+	static float lastTime = 0;
+	// static float& frametime = pparams->frametime;
+	static float& time = pparams->time;	// float seconds
+	static int onground = pparams->onground;
+	static float limit = 10.0;
+	float totalVelocity = 0.0;
 	Vector2D velocity = Vector2D(
-		pparams->simvel[0], 
+		pparams->simvel[0],
 		pparams->simvel[1]
 	);
 
 
-	if(
-		pparams->onground == -1 ||
-		pparams->time == lasttime
-		) {
+	if( onground == -1 ) {
 		return bob;
 	}
 
-	const Vector2D bobEffectModifier = Vector2D( 0.3, 0.7 );
-	float bobEffectStrength = sqrt( 
-		pow( abs( velocity.x * bobEffectModifier.x ), 2 ) 
-		+ pow( abs( velocity.y * bobEffectModifier.y ), 2 )
+	totalVelocity = sqrt(
+		pow( abs( velocity.x ), 2 )
+		+ pow( abs( velocity.y ), 2 )
 	);
 
-	cycle =  
-		fmod( pparams->time, vStepTime ) 
-		/ vStepTime
-		* bobEffectStrength 
-		* cl_bobcycle->value;
+
+	float msTime = time * 1000;
+	float power = NormalizeToMaximumValue(totalVelocity * cl_bobcycle->value, limit);
+	float stepCycle = 0.0; 
+	float stepMod = fmod( msTime, stepTime );
 	
-	bob = 1 * sin( cycle );
-	bob = V_min( bob, 4 );
-	bob = V_max( bob, -7 );
+	if( stepMod < (stepTime / 2.0) ) {
+		stepCycle = NormalizeValue( stepMod, stepTime );
+	}
+	else {
+		stepCycle = NormalizeValue( stepTime - stepMod, stepTime );
+	}
 
-	char buffer[64];
-	snprintf( buffer, sizeof buffer, "%f\n", bob );
-	ConsolePrint( buffer );
+	stepCycle = NormalizeValue( stepCycle, 0.5 ) - 0.5;
 
+	bob = sin( stepCycle ) * power;
+
+	ConsolePrintFloat( bob );
 
 	return bob;
 }

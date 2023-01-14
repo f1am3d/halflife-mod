@@ -97,6 +97,8 @@ void AngleIMatrix(const Vector& angles, float (*matrix)[4]);
 void VectorTransform(const float* in1, float in2[3][4], float* out);
 
 void NormalizeAngles(float* angles);
+float NormalizeValue( float x, float max );
+float NormalizeToMaximumValue( float x, float max );
 void InterpolateAngles(float* start, float* end, float* output, float frac);
 float AngleBetweenVectors(const float* v1, const float* v2);
 

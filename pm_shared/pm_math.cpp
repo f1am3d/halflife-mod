@@ -182,6 +182,25 @@ void NormalizeAngles(float* angles)
 	}
 }
 
+
+float NormalizeValue( float x, float max ) {
+	if( x <= max ) {
+		return x / max;
+	}
+
+	return 1;
+}
+
+
+float NormalizeToMaximumValue( float x, float max ) {
+	if( x <= max ) {
+		return x / max * max;
+	}
+
+	return max;
+}
+
+
 /*
 ===================
 InterpolateAngles
