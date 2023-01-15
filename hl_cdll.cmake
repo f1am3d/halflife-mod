@@ -415,14 +415,27 @@ target_link_libraries(${PROJECT_NAME}
     PUBLIC ../lib/public/sdl2
 )
 
-add_custom_command(
-    TARGET ${PROJECT_NAME} POST_BUILD
+################################################################################
+# Post build actions
+################################################################################
+set(HL_MOD_DIR "C:/Program Files (x86)/Steam/steamapps/common/Half-Life/mymod")
 
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${PROJECT_BINARY_DIR}/Debug/client.dll
-    "C:/Program Files (x86)/Steam/steamapps/common/Half-Life/mymod/cl_dlls/"
+if(EXISTS ${PROJECT_BINARY_DIR}/Debug/client.dll)
+    add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
 
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${PROJECT_BINARY_DIR}/Debug/hl.dll
-    "C:/Program Files (x86)/Steam/steamapps/common/Half-Life/mymod/dlls/"
-)
+        COMMAND ${CMAKE_COMMAND} -E copy
+        ${PROJECT_BINARY_DIR}/Debug/client.dll
+        ${HL_MOD_DIR}/cl_dlls/
+    )
+endif()
+
+if(EXISTS ${PROJECT_BINARY_DIR}/Debug/hl.dll)
+    add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+
+        COMMAND ${CMAKE_COMMAND} -E copy
+        ${PROJECT_BINARY_DIR}/Debug/hl.dll
+        ${HL_MOD_DIR}/dlls/
+    )
+endif()

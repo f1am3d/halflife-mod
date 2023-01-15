@@ -67,6 +67,9 @@ endfunction()
 # Common utils
 ################################################################################
 include(CMake/Utils.cmake)
+#include(CMake/Default.cmake)
+#include(CMake/DefaultCXX.cmake)
+#include(CMake/DefaultFortran.cmake)
 
 ################################################################################
 # Additional Global Settings(add specific info there)
