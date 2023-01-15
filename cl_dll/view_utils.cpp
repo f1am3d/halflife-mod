@@ -1,7 +1,9 @@
+#include <stdio.h>
 #include <corecrt_math.h>
 #include <mathlib.h>
 
 #include "view_utils.h"
+
 
 float getStepFactor( float& globalTime, float& stepTime ) {
 	float msTime = globalTime * 1000;
@@ -23,4 +25,3 @@ float getStepFactor( float& globalTime, float& stepTime ) {
 float getHorizontalVelocityFactor( Vector2D& velocity ) {
     return abs(velocity.Length());
 }
-

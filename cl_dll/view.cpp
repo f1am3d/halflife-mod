@@ -106,6 +106,15 @@ float v_idlescale; // used by TFC for concussion grenade effect
 // MOD 
 float viewStepTime = 750.0; // ms
 
+
+void ConsolePrintFloat( float& value ) {
+	char buffer[64];
+	snprintf( buffer, sizeof buffer, "%f\n", value );
+
+	ConsolePrint( buffer );
+}
+
+
 //=============================================================================
 /*
 void V_NormalizeAngles( Vector& angles )
@@ -164,12 +173,6 @@ void V_InterpolateAngles( float *start, float *end, float *output, float frac )
 	V_NormalizeAngles( output );
 } */
 
-void ConsolePrintFloat( float& value ) {
-	char buffer[64];
-	snprintf( buffer, sizeof buffer, "%f\n", value );
-
-	ConsolePrint( buffer );
-}
 
 // Quakeworld bob code, this fixes jitters in the mutliplayer since the clock (pparams->time) isn't quite linear
 float V_CalcBob( struct ref_params_s* pparams ) {

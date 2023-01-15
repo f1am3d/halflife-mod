@@ -9,3 +9,5 @@
 
 void V_StartPitchDrift();
 void V_StopPitchDrift();
+
+void ConsolePrintFloat( float& value );
