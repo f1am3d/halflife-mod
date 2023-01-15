@@ -1,10 +1,13 @@
-set(PROJECT_NAME hl_cdll)
+set(PROJECT_NAME client)
 
 set(CMAKE_CXX_STANDARD 17)
 
 ################################################################################
 # Source groups
 ################################################################################
+
+# Header Files
+
 set(Header_Files__cl_dll
     "cl_dll/ammo.h"
     "cl_dll/ammohistory.h"
@@ -123,6 +126,16 @@ set(Header_Files__public
     "public/interface.h"
     )
 source_group("Header Files\\public" FILES ${Header_Files__public})
+
+set(Header_Files__mod
+    cl_dll/mod/view_utils.h
+    cl_dll/mod/console_utils.h
+    cl_dll/mod/player_move.h
+    cl_dll/mod/console.hpp
+    )
+source_group("Header Files\\mod" FILES ${Header_Files__mod})
+
+# Source Files
 
 set(Source_Files___hl__cl_dll
     "cl_dll/ev_hldm.cpp"
@@ -245,6 +258,17 @@ set(Source_Files__public
     )
 source_group("Source Files\\public" FILES ${Source_Files__public})
 
+set(Source_Files__mod
+    "cl_dll/mod/view_utils.cpp"
+    "cl_dll/mod/console_utils.cpp"
+    "cl_dll/mod/player_move.cpp"
+    )
+source_group("Source Files\\mod" FILES ${Source_Files__mod})
+
+
+# Combine all files
+
+
 set(ALL_FILES
     ${Header_Files__cl_dll}
     ${Header_Files__cl_dll__particleman}
@@ -253,6 +277,7 @@ set(ALL_FILES
     ${Header_Files__game_shared}
     ${Header_Files__pm_shared}
     ${Header_Files__public}
+    ${Header_Files__mod}
     ${Source_Files___hl__cl_dll}
     ${Source_Files___hl__cl_dll__hl}
     ${Source_Files___hl__dlls}
@@ -262,7 +287,8 @@ set(ALL_FILES
     ${Source_Files__game_shared}
     ${Source_Files__pm_shared}
     ${Source_Files__public}
-    )
+    ${Source_Files__mod}
+)
 
 ################################################################################
 # Target
@@ -270,7 +296,7 @@ set(ALL_FILES
 add_library(${PROJECT_NAME} SHARED ${ALL_FILES})
 
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
-set(ROOT_NAMESPACE hl_cdll)
+set(ROOT_NAMESPACE ${PROJECT_NAME})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     VS_GLOBAL_KEYWORD "Win32Proj"
@@ -377,3 +403,26 @@ if(MSVC)
         /SUBSYSTEM:WINDOWS
         )
 endif()
+
+################################################################################
+# Dependencies
+################################################################################
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME})
+
+target_link_libraries(${PROJECT_NAME}
+    PUBLIC ../utils/vgui/lib/win32_vc6/vgui
+    PUBLIC wsock32
+    PUBLIC ../lib/public/sdl2
+)
+
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${PROJECT_BINARY_DIR}/Debug/client.dll
+    "C:/Program Files (x86)/Steam/steamapps/common/Half-Life/mymod/cl_dlls/"
+
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${PROJECT_BINARY_DIR}/Debug/hl.dll
+    "C:/Program Files (x86)/Steam/steamapps/common/Half-Life/mymod/dlls/"
+)

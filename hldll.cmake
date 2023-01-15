@@ -113,6 +113,8 @@ set(Header_Files__public
     )
 source_group("Header Files\\public" FILES ${Header_Files__public})
 
+# Source Files
+
 set(Source_Files__common
     "common/mathlib.cpp"
     )
@@ -243,6 +245,8 @@ set(Source_Files__public
     )
 source_group("Source Files\\public" FILES ${Source_Files__public})
 
+# Combine all files
+
 set(ALL_FILES
     ${Header_Files__common}
     ${Header_Files__dlls}
@@ -273,14 +277,14 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 # Target name
 ################################################################################
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    TARGET_NAME_DEBUG   "hl"
+    TARGET_NAME_DEBUG "hl"
     TARGET_NAME_RELEASE "hl"
     )
 ################################################################################
 # Output directory
 ################################################################################
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    OUTPUT_DIRECTORY_DEBUG   "${CMAKE_SOURCE_DIR}/$<CONFIG>/${PROJECT_NAME}/"
+    OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/$<CONFIG>/${PROJECT_NAME}/"
     OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/$<CONFIG>/${PROJECT_NAME}/"
     )
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -336,7 +340,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 ################################################################################
 # Compile and link options
 ################################################################################
-if(MSVC)
+if (MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:Debug>:
         /Od
@@ -367,7 +371,7 @@ if(MSVC)
         /DEBUG;
         /SUBSYSTEM:WINDOWS
         )
-endif()
+endif ()
 
 ################################################################################
 # Dependencies

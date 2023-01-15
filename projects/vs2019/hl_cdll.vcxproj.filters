@@ -64,6 +64,12 @@
     <Filter Include="Source Files\cl_dll\particleman">
       <UniqueIdentifier>{7085339d-2b33-4cdf-846c-0e4c7d33add8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\cl_dll\mod">
+      <UniqueIdentifier>{2f46d040-1299-49ba-a681-551e6924cd01}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\cl_dll\mod">
+      <UniqueIdentifier>{87cc51a3-d9f4-47f0-9bda-6ae49ae6a82b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\dlls\crossbow.cpp">
@@ -321,8 +327,14 @@
     <ClCompile Include="..\..\cl_dll\particleman\CBaseParticle.cpp">
       <Filter>Source Files\cl_dll\particleman</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\cl_dll\console_utils.cpp">
+      <Filter>Source Files\cl_dll\mod</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\cl_dll\player_move.cpp">
+      <Filter>Source Files\cl_dll\mod</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\cl_dll\view_utils.cpp">
-      <Filter>Source Files\cl_dll</Filter>
+      <Filter>Source Files\cl_dll\mod</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -599,8 +611,17 @@
     <ClInclude Include="..\..\cl_dll\particleman\CBaseParticle.h">
       <Filter>Header Files\cl_dll\particleman</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\cl_dll\view_utils.h">
-      <Filter>Header Files\cl_dll</Filter>
+    <ClInclude Include="..\..\cl_dll\player_move.h">
+      <Filter>Header Files\cl_dll\mod</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\cl_dll\view_utils.h">
+      <Filter>Header Files\cl_dll\mod</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\cl_dll\console_utils.h">
+      <Filter>Source Files\pm_shared</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Object Include="Debug\hl_cdll\int\player_move.obj" />
   </ItemGroup>
 </Project>

@@ -23,7 +23,9 @@
 #include "r_studioint.h"
 #include "com_model.h"
 #include "kbutton.h"
-#include "view_utils.h"
+
+#include "mod/console_utils.h"
+#include "mod/view_utils.h"
 
 
 int CL_IsThirdPerson();
@@ -105,14 +107,6 @@ float v_idlescale; // used by TFC for concussion grenade effect
 
 // MOD 
 float viewStepTime = 750.0; // ms
-
-
-void ConsolePrintFloat( float& value ) {
-	char buffer[64];
-	snprintf( buffer, sizeof buffer, "%f\n", value );
-
-	ConsolePrint( buffer );
-}
 
 
 //=============================================================================

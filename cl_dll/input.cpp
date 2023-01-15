@@ -669,6 +669,8 @@ void DLLEXPORT CL_CreateMove( float frametime, struct usercmd_s* cmd, int active
 	Vector viewangles;
 	static Vector oldangles;
 
+	cl_movespeedkey->value = 2;
+
 	if( 0 != active ) {
 		//memset( viewangles, 0, sizeof( Vector ) );
 		//viewangles[ 0 ] = viewangles[ 1 ] = viewangles[ 2 ] = 0.0;

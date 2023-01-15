@@ -13,9 +13,14 @@
 *
 ****/
 
+#include <cstdio>	// NULL
+#include <cstring> // strcpy
+#include <cstdlib> // atoi
+#include <cctype>	// isspace
+#include <cassert>
+
 #include "Platform.h"
 
-#include <assert.h>
 #include "mathlib.h"
 #include "cdll_dll.h"
 #include "const.h"
@@ -24,10 +29,10 @@
 #include "pm_shared.h"
 #include "pm_movevars.h"
 #include "pm_debug.h"
-#include <stdio.h>	// NULL
-#include <string.h> // strcpy
-#include <stdlib.h> // atoi
-#include <ctype.h>	// isspace
+
+#include "console_utils.h"
+#include "player_move.h"
+
 
 #ifdef CLIENT_DLL
 // Spectator Mode
@@ -49,14 +54,6 @@ typedef enum
 } modtype_t;
 
 playermove_t* pmove = NULL;
-
-struct playermove_t_mod {
-	public:
-	float lastJumpTime = 0.0;
-	float jumpDelay = 200.0;
-};
-
-playermove_t_mod* pmoveMod = new playermove_t_mod();
 
 typedef struct
 {
@@ -153,12 +150,15 @@ static char grgchTextureType[CTEXTURESMAX];
 
 bool g_onladder = false;
 
+
 static void PM_InitTrace(trace_t* trace, const Vector& end)
 {
 	memset(trace, 0, sizeof(*trace));
 	VectorCopy(end, trace->endpos);
 	trace->allsolid = 1;
 	trace->fraction = 1.0f;
+
+	ConsolePrintFloat( trace->fraction );
 }
 
 static void PM_TraceModel(physent_t* pEnt, const Vector& start, const Vector& end, trace_t* trace)
@@ -671,43 +671,44 @@ void PM_UpdateStepSound()
 			// find texture under player, if different from current texture,
 			// get material type
 			step = PM_MapTextureTypeStepType(pmove->chtexturetype);
+			const int stepTime = fWalking ? 800 : 600;
 
 			switch (pmove->chtexturetype)
 			{
 			default:
 			case CHAR_TEX_CONCRETE:
 				fvol = fWalking ? 0.2 : 0.5;
-				pmove->flTimeStepSound = fWalking ? 400 : 300;
+				pmove->flTimeStepSound = stepTime;
 				break;
 
 			case CHAR_TEX_METAL:
 				fvol = fWalking ? 0.2 : 0.5;
-				pmove->flTimeStepSound = fWalking ? 400 : 300;
+				pmove->flTimeStepSound = stepTime;
 				break;
 
 			case CHAR_TEX_DIRT:
 				fvol = fWalking ? 0.25 : 0.55;
-				pmove->flTimeStepSound = fWalking ? 400 : 300;
+				pmove->flTimeStepSound = stepTime;
 				break;
 
 			case CHAR_TEX_VENT:
 				fvol = fWalking ? 0.4 : 0.7;
-				pmove->flTimeStepSound = fWalking ? 400 : 300;
+				pmove->flTimeStepSound = stepTime;
 				break;
 
 			case CHAR_TEX_GRATE:
 				fvol = fWalking ? 0.2 : 0.5;
-				pmove->flTimeStepSound = fWalking ? 400 : 300;
+				pmove->flTimeStepSound = stepTime;
 				break;
 
 			case CHAR_TEX_TILE:
 				fvol = fWalking ? 0.2 : 0.5;
-				pmove->flTimeStepSound = fWalking ? 400 : 300;
+				pmove->flTimeStepSound = stepTime;
 				break;
 
 			case CHAR_TEX_SLOSH:
 				fvol = fWalking ? 0.2 : 0.5;
-				pmove->flTimeStepSound = fWalking ? 400 : 300;
+				pmove->flTimeStepSound = stepTime;
 				break;
 			}
 		}
@@ -1138,6 +1139,7 @@ void PM_WalkMove()
 	float downdist, updist;
 
 	pmtrace_t trace;
+
 
 	// Copy movement amounts
 	fmove = pmove->cmd.forwardmove;
@@ -3055,8 +3057,23 @@ Numtouch and touchindex[] will be set if any of the physents
 were contacted during the move.
 =============
 */
-void PM_PlayerMove(qboolean server)
-{
+void PM_PlayerMove(qboolean server) {
+	/*
+	* MOODED vaules
+	*/
+	// change default acceleration
+
+	if( pmoveMod->isRunning ) {
+		pmove->movevars->accelerate = 5;
+		pmove->maxspeed = 270;
+	}
+	else {
+		pmove->movevars->accelerate = 3;
+		pmove->maxspeed = 190;
+	}
+	
+
+
 	physent_t* pLadder = NULL;
 
 	// Are we running server code?
