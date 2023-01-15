@@ -50,6 +50,14 @@ typedef enum
 
 playermove_t* pmove = NULL;
 
+struct playermove_t_mod {
+	public:
+	float lastJumpTime = 0.0;
+	float jumpDelay = 200.0;
+};
+
+playermove_t_mod* pmoveMod = new playermove_t_mod();
+
 typedef struct
 {
 	int planenum;
@@ -1671,6 +1679,10 @@ void PM_CatagorizePosition()
 			PM_AddToTouched(tr, pmove->velocity);
 		}
 	}
+
+	if( !PM_IsOnground() ) {
+		pmoveMod->lastJumpTime = pmove->time;
+	}
 }
 
 /*
@@ -2571,11 +2583,22 @@ void PM_Jump()
 {
 	int i;
 
+	// check if player dead
 	if (0 != pmove->dead)
 	{
 		pmove->oldbuttons |= IN_JUMP; // don't jump again until released
 		return;
 	}
+
+	const float lastJumpDelta = pmove->time - pmoveMod->lastJumpTime;
+	// check for bunny hop
+	if( 
+		!PM_IsOnground()
+		|| lastJumpDelta < pmoveMod->jumpDelay
+	) {
+		return;
+	}
+
 
 	const bool tfc = atoi(pmove->PM_Info_ValueForKey(pmove->physinfo, "tfc")) == 1;
 
@@ -2670,7 +2693,8 @@ void PM_Jump()
 	{
 		// Adjust for super long jump module
 		// UNDONE -- note this should be based on forward angles, not current velocity.
-		if (cansuperjump &&
+		if (
+			cansuperjump &&
 			(pmove->cmd.buttons & IN_DUCK) != 0 &&
 			(pmove->flDuckTime > 0) &&
 			Length(pmove->velocity) > 50)
@@ -2684,10 +2708,10 @@ void PM_Jump()
 
 			pmove->velocity[2] = sqrt(2 * 800 * 56.0);
 		}
-		else
+		/*else
 		{
 			pmove->velocity[2] = sqrt(2 * 800 * 45.0);
-		}
+		}*/
 	}
 	else
 	{
@@ -3486,4 +3510,8 @@ bool PM_GetHullBounds(int hullnumber, float* mins, float* maxs)
 	}
 
 	return false;
+}
+
+bool PM_IsOnground() {
+	return pmove->onground == 0;
 }
