@@ -24,7 +24,6 @@
 #include "com_model.h"
 #include "kbutton.h"
 
-#include "mod/console_utils.h"
 #include "mod/view_utils.h"
 
 
@@ -419,8 +418,6 @@ void V_CalcViewRoll( struct ref_params_s* pparams ) {
 		pparams->viewangles[ROLL] = 80; // dead view angle
 		return;
 	}
-
-	ConsolePrintFloat( pparams->viewangles[ROLL] );
 }
 
 

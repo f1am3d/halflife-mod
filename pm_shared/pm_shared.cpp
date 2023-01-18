@@ -30,7 +30,6 @@
 #include "pm_movevars.h"
 #include "pm_debug.h"
 
-#include "console_utils.h"
 #include "player_move.h"
 
 
@@ -157,8 +156,6 @@ static void PM_InitTrace(trace_t* trace, const Vector& end)
 	VectorCopy(end, trace->endpos);
 	trace->allsolid = 1;
 	trace->fraction = 1.0f;
-
-	ConsolePrintFloat( trace->fraction );
 }
 
 static void PM_TraceModel(physent_t* pEnt, const Vector& start, const Vector& end, trace_t* trace)

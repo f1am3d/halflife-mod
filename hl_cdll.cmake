@@ -129,7 +129,6 @@ source_group("Header Files\\public" FILES ${Header_Files__public})
 
 set(Header_Files__mod
     cl_dll/mod/view_utils.h
-    cl_dll/mod/console_utils.h
     cl_dll/mod/player_move.h
     cl_dll/mod/console.hpp
     )
@@ -260,7 +259,6 @@ source_group("Source Files\\public" FILES ${Source_Files__public})
 
 set(Source_Files__mod
     "cl_dll/mod/view_utils.cpp"
-    "cl_dll/mod/console_utils.cpp"
     "cl_dll/mod/player_move.cpp"
     )
 source_group("Source Files\\mod" FILES ${Source_Files__mod})
@@ -426,7 +424,7 @@ if(EXISTS ${PROJECT_BINARY_DIR}/Debug/client.dll)
 
         COMMAND ${CMAKE_COMMAND} -E copy
         ${PROJECT_BINARY_DIR}/Debug/client.dll
-        ${HL_MOD_DIR}/cl_dlls/
+        ${HL_MOD_DIR}/cl_dlls
     )
 endif()
 
@@ -436,6 +434,6 @@ if(EXISTS ${PROJECT_BINARY_DIR}/Debug/hl.dll)
 
         COMMAND ${CMAKE_COMMAND} -E copy
         ${PROJECT_BINARY_DIR}/Debug/hl.dll
-        ${HL_MOD_DIR}/dlls/
+        ${HL_MOD_DIR}/dlls
     )
 endif()
