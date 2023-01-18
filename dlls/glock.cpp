@@ -75,7 +75,12 @@ bool CGlock::GetItemInfo(ItemInfo* p)
 bool CGlock::Deploy()
 {
 	// pev->body = 1;
-	return DefaultDeploy("models/v_9mmhandgun.mdl", "models/p_9mmhandgun.mdl", GLOCK_DRAW, "onehanded");
+	return DefaultDeploy(
+        "models/v_9mmhandgun.mdl",
+        "models/p_9mmhandgun.mdl",
+        GLOCK_DRAW,
+        "onehanded"
+        );
 }
 
 void CGlock::SecondaryAttack()
