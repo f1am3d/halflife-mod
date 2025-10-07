@@ -220,7 +220,7 @@ enum HGRUNT_SENTENCE_TYPES
 {
 	HGRUNT_SENT_NONE = -1,
 	HGRUNT_SENT_GREN = 0,
-	sssssHGRUNT_SENT_ALERT,
+	HGRUNT_SENT_ALERT,
 	HGRUNT_SENT_MONSTER,
 	HGRUNT_SENT_COVER,
 	HGRUNT_SENT_THROW,
@@ -378,40 +378,6 @@ void CHGrunt::PrescheduleThink()
 			}
 		}
 	}
-
-	if (CVAR_GET_FLOAT("ai_grunt_movefire") <= 0) return;
-	if (m_MonsterState != MONSTERSTATE_COMBAT) return;
-	if (!m_hEnemy) return;
-	if (!HasConditions(bits_COND_SEE_ENEMY | bits_COND_CAN_RANGE_ATTACK1)) return;
-
-	// двигаемся?
-	if (m_Activity != ACT_RUN && m_Activity != ACT_WALK) return;
-
-	// темп стрельбы
-	if (gpGlobals->time < m_flNextAttack) return;
-
-	// 3) Стреляем «на бегу» с худшей точностью
-	Vector src = GetGunPosition();
-	Vector tgt = m_hEnemy->BodyTarget(src);
-	Vector dir = (tgt - src).Normalize();
-
-	// Конус шире из-за бега
-	Vector spread = VECTOR_CONE_10DEGREES; // при желании 15–20
-
-	// 9mm AR пули у HGrunt
-	FireBullets(1, src, dir, spread, 2048, BULLET_MONSTER_9MM, 1);
-	EMIT_SOUND(ENT(pev), CHAN_WEAPON, "hgrunt/gr_mgun1.wav", 1.0, ATTN_NORM);
-	pev->effects |= EF_MUZZLEFLASH;
-
-	// учёт боезапаса, заставим его иногда перезаряжаться/прятаться
-	m_cAmmoLoaded = max(0, m_cAmmoLoaded - 1);
-	if (m_cAmmoLoaded <= 0) SetConditions(bits_COND_NO_AMMO_LOADED);
-
-	// ROF: ~10–12 rps
-	m_flNextAttack = gpGlobals->time + 0.09f;
-
-	// лёгкая отдача
-	pev->punchangle.x -= 1.0f;
 }
 
 //=========================================================
@@ -485,11 +451,7 @@ bool CHGrunt::CheckRangeAttack1(float flDot, float flDist)
 			return false;
 		}
 
-		if (!m_hEnemy->IsPlayer() && flDist > 64 && flDist <= 256 ) {
-			RunTask(HGRUNT_SENT_ALERT)
-		}
-
-		const Vector vecSrc = GetGunPosition();
+		Vector vecSrc = GetGunPosition();
 
 		// verify that a bullet fired from the gun will hit the enemy before the world.
 		UTIL_TraceLine(vecSrc, m_hEnemy->BodyTarget(vecSrc), ignore_monsters, ignore_glass, ENT(pev), &tr);
@@ -1523,14 +1485,6 @@ Task_t tlGruntTakeCover1[] =
 		{TASK_WAIT_FOR_MOVEMENT, (float)0},
 		{TASK_REMEMBER, (float)bits_MEMORY_INCOVER},
 		{TASK_SET_SCHEDULE, (float)SCHED_GRUNT_WAIT_FACE_ENEMY},
-};
-
-Task_t tlGruntRetreat[] = {
-	{TASK_FIND_COVER_FROM_ENEMY, (float)0},
-	{TASK_RUN_PATH, (float)0},
-	{TASK_WAIT_FOR_MOVEMENT, (float)0},
-	{TASK_REMEMBER, (float)bits_MEMORY_INCOVER},
-	{SCHED_GRUNT_ESTABLISH_LINE_OF_FIRE, static_cast<float>(0)},
 };
 
 Schedule_t slGruntTakeCover[] =
