@@ -144,6 +144,7 @@ public:
 	void PrescheduleThink() override;
 	void GibMonster() override;
 	void SpeakSentence();
+	void CheckForNearbyGrenades();
 
 	bool Save(CSave& save) override;
 	bool Restore(CRestore& restore) override;
@@ -183,6 +184,10 @@ public:
 	int m_iSentence;
 
 	static const char* pGruntSentences[];
+
+    CBaseEntity* m_pNearbyGrenade;  // ссылка на ближайшую гранату
+    float m_flGrenadeDetectTime;    // время обнаружения гранаты
+    bool m_fDivingToCover;          // флаг прыжка в укрытие
 };
 
 LINK_ENTITY_TO_CLASS(monster_human_grunt, CHGrunt);
@@ -274,11 +279,11 @@ int CHGrunt::IRelationship(CBaseEntity* pTarget)
 //=========================================================
 void CHGrunt::GibMonster()
 {
-	Vector vecGunPos;
-	Vector vecGunAngles;
-
 	if (GetBodygroup(2) != 2)
-	{ // throw a gun if the grunt has one
+	{
+		Vector vecGunAngles;
+		Vector vecGunPos;
+		// throw a gun if the grunt has one
 		GetAttachment(0, vecGunPos, vecGunAngles);
 
 		CBaseEntity* pGun;
@@ -362,22 +367,67 @@ void CHGrunt::JustSpoke()
 //=========================================================
 void CHGrunt::PrescheduleThink()
 {
-	if (InSquad() && m_hEnemy != NULL)
+	if (InSquad() && m_hEnemy != nullptr && HasConditions(bits_COND_SEE_ENEMY))
 	{
-		if (HasConditions(bits_COND_SEE_ENEMY))
-		{
-			// update the squad's last enemy sighting time.
-			MySquadLeader()->m_flLastEnemySightTime = gpGlobals->time;
-		}
-		else
-		{
-			if (gpGlobals->time - MySquadLeader()->m_flLastEnemySightTime > 5)
-			{
-				// been a while since we've seen the enemy
-				MySquadLeader()->m_fEnemyEluded = true;
-			}
-		}
+		// update the squad's last enemy sighting time.
+		MySquadLeader()->m_flLastEnemySightTime = gpGlobals->time;
 	}
+	else if (gpGlobals->time - MySquadLeader()->m_flLastEnemySightTime > 5)
+	{
+		// been a while since we've seen the enemy
+		MySquadLeader()->m_fEnemyEluded = true;
+	}
+
+	// Proactively look for nearby grenades and remember one if found.
+	CheckForNearbyGrenades();
+}
+
+void CHGrunt::CheckForNearbyGrenades()
+{
+    CBaseEntity* pEntity = nullptr;
+	CBaseEntity* pBestGrenade = nullptr;
+	float detectDist = 384.0f; // радиус обнаружения гранат
+
+	// Поиск всех гранат в радиусе
+    while ((pEntity = UTIL_FindEntityByClassname(pEntity, "grenade")) != nullptr)
+    {
+        float dist = (pEntity->pev->origin - pev->origin).Length();
+
+        if (dist < detectDist && pEntity->pev->owner != edict() && !InSquad())
+        {
+            detectDist = dist;
+            pBestGrenade = pEntity;
+        }
+    }
+
+    if (pBestGrenade)
+    {
+        m_pNearbyGrenade = pBestGrenade;
+
+        // Время до взрыва (примерно)
+        float flTimeToExplode = pBestGrenade->pev->dmgtime - gpGlobals->time;
+
+        if (flTimeToExplode > 0)
+        {
+            if (detectDist < 128.0f && flTimeToExplode > 1.5f && RANDOM_LONG(0, 100) < 30)
+            {
+                // Достаточно времени и близко - попытаться кинуть обратно
+                m_iSentence = HGRUNT_SENT_THROW;
+
+
+            }
+            else if (detectDist < 256.0f)
+            {
+                // Нужно уклоняться прыжком
+                m_iSentence = HGRUNT_SENT_THROW;
+            }
+        }
+    }
+    else
+    {
+        m_pNearbyGrenade = nullptr;
+        m_fDivingToCover = false;
+    }
 }
 
 //=========================================================
@@ -1122,6 +1172,48 @@ void CHGrunt::StartTask(Task_t* pTask)
 			m_IdealActivity = ACT_GLIDE;
 		}
 		break;
+	case TASK_GRUNT_DIVE_COVER:
+	    // Запускаем анимацию прыжка
+	    m_IdealActivity = ACT_LEAP; // или создать кастомную ACT_DIVECOVER
+	    m_fDivingToCover = true;
+
+	    // Вычисляем направление прыжка (от гранаты)
+	    if (m_pNearbyGrenade)
+	    {
+	        Vector vecAwayFromGrenade = (pev->origin - m_pNearbyGrenade->pev->origin).Normalize();
+	        pev->velocity = vecAwayFromGrenade * 200 + Vector(0, 0, 150);
+	    }
+	    break;
+
+	case TASK_GRUNT_THROW_BACK_GRENADE:
+	    if (m_pNearbyGrenade)
+	    {
+	        // Подбираем гранату и кидаем в сторону врага
+	        Vector vecThrowDir;
+	        if (m_hEnemy)
+	        {
+	            vecThrowDir = (m_hEnemy->pev->origin - pev->origin).Normalize();
+	        }
+	        else
+	        {
+	            // Кидаем в случайном направлении
+	            vecThrowDir = Vector(RANDOM_FLOAT(-1,1), RANDOM_FLOAT(-1,1), 0.3).Normalize();
+	        }
+
+	        // "Подбираем" гранату (удаляем старую, создаем новую)
+	        Vector vecGrenadePos = m_pNearbyGrenade->pev->origin;
+	        float flTimeLeft = m_pNearbyGrenade->pev->dmgtime - gpGlobals->time;
+
+	        UTIL_Remove(m_pNearbyGrenade);
+	        m_pNearbyGrenade = NULL;
+
+	        // Создаем новую гранату с нашим броском
+	        Vector vecThrowVel = vecThrowDir * 400 + Vector(0, 0, 200);
+	        CGrenade::ShootTimed(pev, GetGunPosition(), vecThrowVel, flTimeLeft);
+
+	        m_IdealActivity = ACT_RANGE_ATTACK2; // анимация броска
+	    }
+	    break;
 
 	default:
 		CSquadMonster::StartTask(pTask);
@@ -1487,6 +1579,14 @@ Task_t tlGruntTakeCover1[] =
 		{TASK_SET_SCHEDULE, (float)SCHED_GRUNT_WAIT_FACE_ENEMY},
 };
 
+Task_t tlGruntRetreat[] = {
+	{TASK_FIND_COVER_FROM_ENEMY, (float)0},
+	{TASK_RUN_PATH, (float)0},
+	{TASK_WAIT_FOR_MOVEMENT, (float)0},
+	{TASK_REMEMBER, (float)bits_MEMORY_INCOVER},
+	{SCHED_GRUNT_ESTABLISH_LINE_OF_FIRE, static_cast<float>(0)},
+};
+
 Schedule_t slGruntTakeCover[] =
 	{
 		{tlGruntTakeCover1,
@@ -1790,6 +1890,48 @@ Schedule_t slGruntRepelLand[] =
 			"Repel Land"},
 };
 
+//=========================================================
+// Schedule for jumping down at cover
+//=========================================================
+Task_t tlGruntDiveCover[] =
+{
+    { TASK_GRUNT_SPEAK_SENTENCE, (float)0 },
+    { TASK_GRUNT_DIVE_COVER, (float)0 },
+    { TASK_WAIT, (float)1.0 },
+    { TASK_SET_ACTIVITY, (float)ACT_IDLE },
+};
+
+Schedule_t slGruntDiveCover[] =
+{
+    {
+        tlGruntDiveCover,
+        ARRAYSIZE(tlGruntDiveCover),
+        0, // прерывается только завершением
+        0,
+        "Grunt Dive Cover"
+    },
+};
+
+
+// Schedule для подбора и броска гранаты обратно
+Task_t tlGruntThrowBack[] =
+{
+    { TASK_STOP_MOVING, (float)0 },
+    { TASK_GRUNT_SPEAK_SENTENCE, (float)0 },
+    { TASK_GRUNT_THROW_BACK_GRENADE, (float)0 },
+    { TASK_WAIT, (float)0.5 },
+};
+
+Schedule_t slGruntThrowBack[] =
+{
+    {
+        tlGruntThrowBack,
+        ARRAYSIZE(tlGruntThrowBack),
+        0,
+        0,
+        "Grunt Throw Back Grenade"
+    },
+};
 
 DEFINE_CUSTOM_SCHEDULES(CHGrunt){
 	slGruntFail,
@@ -1813,6 +1955,8 @@ DEFINE_CUSTOM_SCHEDULES(CHGrunt){
 	slGruntRepel,
 	slGruntRepelAttack,
 	slGruntRepelLand,
+    slGruntDiveCover,
+    slGruntThrowBack,
 };
 
 IMPLEMENT_CUSTOM_SCHEDULES(CHGrunt, CSquadMonster);
@@ -1931,7 +2075,6 @@ void CHGrunt::SetActivity(Activity NewActivity)
 //=========================================================
 Schedule_t* CHGrunt::GetSchedule()
 {
-
 	// clear old sentence
 	m_iSentence = HGRUNT_SENT_NONE;
 
@@ -1978,6 +2121,12 @@ Schedule_t* CHGrunt::GetSchedule()
 					SENTENCEG_PlayRndSz(ENT(pev), "HG_GREN", HGRUNT_SENTENCE_VOLUME, GRUNT_ATTN, 0, m_voicePitch);
 					JustSpoke();
 				}
+
+			    if (m_pNearbyGrenade)
+			    {
+			        return GetScheduleOfType(TASK_GRUNT_THROW_BACK_GRENADE);
+			    }
+
 				return GetScheduleOfType(SCHED_TAKE_COVER_FROM_BEST_SOUND);
 			}
 			/*
@@ -1988,10 +2137,17 @@ Schedule_t* CHGrunt::GetSchedule()
 			*/
 		}
 	}
+
 	switch (m_MonsterState)
 	{
 	case MONSTERSTATE_COMBAT:
 	{
+	    //
+	    if (HasConditions(bits_SOUND_DANGER))
+	    {
+	        return GetScheduleOfType(SCHED_GRUNT_REPEL_ATTACK);
+	    }
+
 		// dead enemy
 		if (HasConditions(bits_COND_ENEMY_DEAD))
 		{
@@ -2321,6 +2477,10 @@ Schedule_t* CHGrunt::GetScheduleOfType(int Type)
 	{
 		return &slGruntRepelLand[0];
 	}
+	case SCHED_GRUNT_DIVE_COVER:
+	    return &slGruntDiveCover[0];
+	case SCHED_GRUNT_THROW_BACK:
+	    return &slGruntThrowBack[0];
 	default:
 	{
 		return CSquadMonster::GetScheduleOfType(Type);
@@ -2364,7 +2524,7 @@ void CHGruntRepel::RepelUse(CBaseEntity* pActivator, CBaseEntity* pCaller, USE_T
 	TraceResult tr;
 	UTIL_TraceLine(pev->origin, pev->origin + Vector(0, 0, -4096.0), dont_ignore_monsters, ENT(pev), &tr);
 	/*
-	if ( tr.pHit && Instance( tr.pHit )->pev->solid != SOLID_BSP) 
+	if ( tr.pHit && Instance( tr.pHit )->pev->solid != SOLID_BSP)
 		return NULL;
 	*/
 
