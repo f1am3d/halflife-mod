@@ -124,6 +124,7 @@ public:
 	void Spawn() override;
 	void Precache() override;
 	void SetYawSpeed() override;
+	void SetRunSpeed();
 	int Classify() override;
 	int ISoundMask() override;
 	void HandleAnimEvent(MonsterEvent_t* pEvent) override;
@@ -398,10 +399,8 @@ bool CHGrunt::FCanCheckAttacks()
 	{
 		return true;
 	}
-	else
-	{
-		return false;
-	}
+
+    return false;
 }
 
 
@@ -506,7 +505,11 @@ bool CHGrunt::CheckRangeAttack2(float flDot, float flDist)
 		if (RANDOM_LONG(0, 1))
 		{
 			// magically know where they are
-			vecTarget = Vector(m_hEnemy->pev->origin.x, m_hEnemy->pev->origin.y, m_hEnemy->pev->absmin.z);
+			vecTarget = Vector(
+			    m_hEnemy->pev->origin.x,
+			    m_hEnemy->pev->origin.y,
+			    m_hEnemy->pev->absmin.z
+			    );
 		}
 		else
 		{
@@ -640,45 +643,76 @@ bool CHGrunt::TakeDamage(entvars_t* pevInflictor, entvars_t* pevAttacker, float 
 //=========================================================
 void CHGrunt::SetYawSpeed()
 {
-	int ys;
+	int yawSpeed;
 
 	switch (m_Activity)
 	{
 	case ACT_IDLE:
-		ys = 150;
+		yawSpeed = 150;
 		break;
 	case ACT_RUN:
-		ys = 150;
+		yawSpeed = 300;
 		break;
 	case ACT_WALK:
-		ys = 180;
+		yawSpeed = 200;
 		break;
 	case ACT_RANGE_ATTACK1:
-		ys = 120;
+		yawSpeed = 120;
 		break;
 	case ACT_RANGE_ATTACK2:
-		ys = 120;
+		yawSpeed = 120;
 		break;
 	case ACT_MELEE_ATTACK1:
-		ys = 120;
+		yawSpeed = 120;
 		break;
 	case ACT_MELEE_ATTACK2:
-		ys = 120;
+		yawSpeed = 120;
 		break;
 	case ACT_TURN_LEFT:
 	case ACT_TURN_RIGHT:
-		ys = 180;
+		yawSpeed = 180;
 		break;
 	case ACT_GLIDE:
 	case ACT_FLY:
-		ys = 30;
+		yawSpeed = 30;
 		break;
 	default:
-		ys = 90;
+		yawSpeed = 90;
 		break;
 	}
 
-	pev->yaw_speed = ys;
+	pev->yaw_speed = yawSpeed;
+}
+
+void CHGrunt::SetRunSpeed()
+{
+    // --- begin override: force grunt ground speeds so changes persist ---
+    // Default ground speeds (units/sec) -- tune these values to your needs
+    if (m_Activity == ACT_RUN)
+    {
+        if (pev->health <= HGRUNT_LIMP_HEALTH)
+        {
+            // limp run slower
+            m_flGroundSpeed = 200.0f;
+        }
+        else
+        {
+            // normal run speed
+            m_flGroundSpeed = 400.0f; // <- adjust this value to change run speed
+        }
+    }
+    else if (m_Activity == ACT_WALK)
+    {
+        if (pev->health <= HGRUNT_LIMP_HEALTH)
+        {
+            m_flGroundSpeed = 40.0f;
+        }
+        else
+        {
+            m_flGroundSpeed = 80.0f; // walk speed
+        }
+    }
+    // --- end override ---
 }
 
 void CHGrunt::IdleSound()
@@ -1823,9 +1857,10 @@ IMPLEMENT_CUSTOM_SCHEDULES(CHGrunt, CSquadMonster);
 void CHGrunt::SetActivity(Activity NewActivity)
 {
 	int iSequence = ACTIVITY_NOT_AVAILABLE;
-	void* pmodel = GET_MODEL_PTR(ENT(pev));
 
-	switch (NewActivity)
+	m_Activity = NewActivity; // Go ahead and set this so it doesn't keep trying when the anim is not present
+
+	switch (m_Activity)
 	{
 	case ACT_RANGE_ATTACK1:
 		// grunt is either shooting standing or shooting crouched
@@ -1864,21 +1899,21 @@ void CHGrunt::SetActivity(Activity NewActivity)
 			// get toss anim
 			iSequence = LookupSequence("throwgrenade");
 		}
-		else
-		{
-			// get launch anim
-			iSequence = LookupSequence("launchgrenade");
-		}
+	    else if ((pev->weapons & HGRUNT_GRENADELAUNCHER) != 0)
+	    {
+	        // shot grenade launcher
+	        iSequence = LookupSequence("launchgrenade");
+	    }
 		break;
 	case ACT_RUN:
 		if (pev->health <= HGRUNT_LIMP_HEALTH)
 		{
 			// limp!
-			iSequence = LookupActivity(ACT_RUN_HURT);
+			iSequence = LookupSequence("limpingrun");
 		}
 		else
 		{
-			iSequence = LookupActivity(NewActivity);
+			iSequence = LookupSequence("run");
 		}
 		break;
 	case ACT_WALK:
@@ -1889,22 +1924,21 @@ void CHGrunt::SetActivity(Activity NewActivity)
 		}
 		else
 		{
-			iSequence = LookupActivity(NewActivity);
+			iSequence = LookupActivity(m_Activity);
 		}
 		break;
 	case ACT_IDLE:
 		if (m_MonsterState == MONSTERSTATE_COMBAT)
 		{
-			NewActivity = ACT_IDLE_ANGRY;
+			m_Activity = ACT_IDLE_ANGRY;
 		}
-		iSequence = LookupActivity(NewActivity);
+		iSequence = LookupActivity(m_Activity);
 		break;
 	default:
-		iSequence = LookupActivity(NewActivity);
+		iSequence = LookupActivity(m_Activity);
 		break;
 	}
 
-	m_Activity = NewActivity; // Go ahead and set this so it doesn't keep trying when the anim is not present
 
 	// Set to the desired anim, or default anim if the desired is not present
 	if (iSequence > ACTIVITY_NOT_AVAILABLE)
@@ -1917,6 +1951,7 @@ void CHGrunt::SetActivity(Activity NewActivity)
 		pev->sequence = iSequence; // Set to the reset anim (if it's there)
 		ResetSequenceInfo();
 		SetYawSpeed();
+	    SetRunSpeed();
 	}
 	else
 	{
