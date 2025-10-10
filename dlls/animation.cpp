@@ -52,15 +52,12 @@ bool ExtractBbox(void* pmodel, int sequence, float* mins, float* maxs)
 
 int LookupActivity(void* pmodel, entvars_t* pev, int activity)
 {
-	studiohdr_t* pstudiohdr;
+	studiohdr_t* pstudiohdr = static_cast<studiohdr_t*>(pmodel);
 
-	pstudiohdr = (studiohdr_t*)pmodel;
 	if (!pstudiohdr)
 		return 0;
 
-	mstudioseqdesc_t* pseqdesc;
-
-	pseqdesc = (mstudioseqdesc_t*)((byte*)pstudiohdr + pstudiohdr->seqindex);
+	mstudioseqdesc_t* pseqdesc = reinterpret_cast<mstudioseqdesc_t*>(reinterpret_cast<byte*>(pstudiohdr) + pstudiohdr->seqindex);
 
 	int weighttotal = 0;
 	int seq = ACTIVITY_NOT_AVAILABLE;
