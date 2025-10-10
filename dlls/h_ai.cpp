@@ -81,6 +81,7 @@ Vector VecCheckToss(entvars_t* pev, const Vector& vecSpot1, Vector vecSpot2, flo
 	Vector vecScale;
 	Vector vecGrenadeVel;
 	Vector vecTemp;
+
 	float flGravity = g_psv_gravity->value * flGravityAdj;
 
 	if (vecSpot2.z - vecSpot1.z > 500)
@@ -114,8 +115,8 @@ Vector VecCheckToss(entvars_t* pev, const Vector& vecSpot1, Vector vecSpot2, flo
 	}
 
 	// How high should the grenade travel to reach the apex
-	float distance1 = (vecMidPoint.z - vecSpot1.z);
-	float distance2 = (vecMidPoint.z - vecSpot2.z);
+	float distance1 = vecMidPoint.z - vecSpot1.z;
+	float distance2 = vecMidPoint.z - vecSpot2.z;
 
 	// How long will it take for the grenade to travel this distance
 	float time1 = sqrt(distance1 / (0.5 * flGravity));

@@ -124,15 +124,12 @@ void GetEyePosition(void* pmodel, float* vecEyePosition)
 
 int LookupSequence(void* pmodel, const char* label)
 {
-	studiohdr_t* pstudiohdr;
+	studiohdr_t* pstudiohdr = static_cast<studiohdr_t*>(pmodel);
 
-	pstudiohdr = (studiohdr_t*)pmodel;
 	if (!pstudiohdr)
 		return 0;
 
-	mstudioseqdesc_t* pseqdesc;
-
-	pseqdesc = (mstudioseqdesc_t*)((byte*)pstudiohdr + pstudiohdr->seqindex);
+	mstudioseqdesc_t* pseqdesc = reinterpret_cast<mstudioseqdesc_t*>(reinterpret_cast<byte*>(pstudiohdr) + pstudiohdr->seqindex);
 
 	for (int i = 0; i < pstudiohdr->numseq; i++)
 	{
